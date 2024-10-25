@@ -67,7 +67,7 @@ stages:
               displayName: 'Sign Files'
               inputs:
                 command: custom
-                projects: '$(Build.SourcesDirectory)/eng/signing/Sign.proj'
+                projects: '$(Build.SourcesDirectory)/eng/signing/Sign.csproj'
                 custom: build
                 arguments: >-
                   /t:AfterBuild

@@ -1,12 +1,10 @@
 <!-- Copyright (c) Microsoft Corporation. Use of this source code is governed by a BSD-style license that can be found in the LICENSE file. -->
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Minimal stubs for '.proj' to work. -->
+  <!-- Minimal info for '.csproj' to work. -->
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
   </PropertyGroup>
-  <Target Name="CreateManifestResourceNames" />
-  <Target Name="CoreCompile" />
 
   <!-- https://dev.azure.com/devdiv/DevDiv/_wiki/wikis/DevDiv.wiki/650/MicroBuild-Signing -->
   <ItemGroup>
@@ -58,6 +56,7 @@
       does this is very slow (30 minutes), so unpack/repack ourselves, instead.
     -->
     <Unzip
+      Condition="'@(GoZipFile)' != ''"
       SourceFiles="%(GoZipFile.Identity)"
       DestinationFolder="%(GoZipFile.ExtractedDir)" />
     <ItemGroup>
@@ -72,9 +71,13 @@
       <FilesToSign Remove="%(GoZipFile.ExtractedDir)**\testdata\**" />
     </ItemGroup>
     <!-- macOS codesign -->
-    <Exec Command="if not exist %(GoMacOSTarFile.ExtractedDir) mkdir %(GoMacOSTarFile.ExtractedDir)" />
-    <Exec Command="tar -xzf %(GoMacOSTarFile.Identity) -C %(GoMacOSTarFile.ExtractedDir)" />
-    <ItemGroup>
+    <Exec
+      Condition="'@(GoMacOSTarFile)' != ''"
+      Command="if not exist %(GoMacOSTarFile.ExtractedDir) mkdir %(GoMacOSTarFile.ExtractedDir)" />
+    <Exec
+      Condition="'@(GoMacOSTarFile)' != ''"
+      Command="tar -xzf %(GoMacOSTarFile.Identity) -C %(GoMacOSTarFile.ExtractedDir)" />
+    <ItemGroup Condition="'@(GoMacOSTarFile)' != ''">
       <FilesToSign Include="%(GoMacOSTarFile.ExtractedDir)go">
         <Authenticode>MacDeveloperHarden</Authenticode>
         <!-- macOS signing requires the binaries to be zipped up -->
@@ -95,29 +98,40 @@
       file for each one: changing the zip's contents means we have to wait until now to do this.
     -->
     <ZipDirectory
+      Condition="'@(GoZipFile)' != ''"
       SourceDirectory="%(GoZipFile.ExtractedDir)"
       DestinationFile="%(GoZipFile.Identity)"
       Overwrite="true" />
 
-    <Exec Command="pwsh ..\run.ps1 write-checksum @(GoZipFile, ' ')" />
+    <Exec
+      Condition="'@(GoZipFile)' != ''"
+      Command="pwsh ..\run.ps1 write-checksum @(GoZipFile, ' ')" />
 
     <!-- Remove the large extracted dir so the build job doesn't upload it. -->
-    <RemoveDir Directories="@(GoZipFile -> '%(ExtractedDir)')" />
+    <RemoveDir
+      Condition="'@(GoZipFile)' != ''"
+      Directories="@(GoZipFile -> '%(ExtractedDir)')" />
 
     <!-- Repack macOS tar.gz -->
-    <Exec Command="tar -czf %(GoMacOSTarFile.Identity) -C %(GoMacOSTarFile.ExtractedDir) ." />
+    <Exec
+      Condition="'@(GoMacOSTarFile)' != ''"
+      Command="tar -czf %(GoMacOSTarFile.Identity) -C %(GoMacOSTarFile.ExtractedDir) ." />
 
     <!-- Notarize macOS -->
-    <ItemGroup>
+    <ItemGroup Condition="'@(GoMacOSTarFile.Identity)' != ''">
       <FilesToSign Include="%(GoMacOSTarFile.Identity)">
         <Authenticode>MacNotarize</Authenticode>
       </FilesToSign>
     </ItemGroup>
 
-    <Exec Command="pwsh ..\run.ps1 write-checksum @(GoMacOSTarFile, ' ')" />
+    <Exec
+      Condition="'@(GoMacOSTarFile)' != ''"
+      Command="pwsh ..\run.ps1 write-checksum @(GoMacOSTarFile, ' ')" />
 
     <!-- Remove the large extracted dir so the build job doesn't upload it. -->
-    <RemoveDir Directories="@(GoMacOSTarFile -> '%(ExtractedDir)')" />
+    <RemoveDir
+      Condition="'@(GoMacOSTarFile)' != ''"
+      Directories="@(GoMacOSTarFile -> '%(ExtractedDir)')" />
   </Target>
 
   <Target Name="SignFiles" BeforeTargets="PrepSign">

@@ -15,7 +15,7 @@ This infrastructure runs on Windows only.
 1. Create the directory `tosign` and add `.tar.gz` and `.zip` artifacts.
 1. Install the plugin:
    1. Download the latest https://devdiv.visualstudio.com/DevDiv/_artifacts/feed/MicroBuildToolset/NuGet/MicroBuild.Plugins.Signing
-   1. Extract it to `%userprofile%\.nuget\microbuild.plugins.signing\1.1.900`.
+   1. Extract it to `%userprofile%\.nuget\packages\microbuild.plugins.signing\1.1.900`.
       * Optionally make the last dir match the version of the package. It will be discovered dynamically, as a plugin, whether or not it matches.
 1. Run a "test sign" build locally to exercise the tooling:
    ```
