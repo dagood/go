@@ -51,7 +51,9 @@
       sig on the machine.
     -->
     <Copy SourceFiles="@(LinuxGoFile)" DestinationFiles="@(LinuxGoSigFile)" />
+
     <!--
+      Sign contents of Windows zip files.
       SignTool notices zip containers and tries to extract them and update them in-place. The way it
       does this is very slow (30 minutes), so unpack/repack ourselves, instead.
     -->
@@ -70,7 +72,10 @@
       -->
       <FilesToSign Remove="%(GoZipFile.ExtractedDir)**\testdata\**" />
     </ItemGroup>
-    <!-- macOS codesign -->
+
+    <!--
+      Sign contents of macOS tar.gz files.
+    -->
     <Exec
       Condition="'@(GoMacOSTarFile)' != ''"
       Command="if not exist %(GoMacOSTarFile.ExtractedDir) mkdir %(GoMacOSTarFile.ExtractedDir)" />
