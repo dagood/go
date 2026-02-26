@@ -210,7 +210,7 @@ index aa41986e8e9387..d4121357526a84 100644
  var Experiment ExperimentFlags = func() ExperimentFlags {
 +	if os.Getenv("MS_GO_NOSYSTEMCRYPTO") == "1" {
 +		// If MS_GO_NOSYSTEMCRYPTO is set, ensure that nosystemcrypto is in GOEXPERIMENT.
-+		// We do it here because it is the earliest point where the toolchain tries to retrive
++		// We do it here because it is the earliest point where the toolchain tries to retrieve
 +		// the GOEXPERIMENT value.
 +		// The environment variable is updated rather than appending "nosystemcrypto" to the
 +		// result of ParseGOEXPERIMENT because the latter will be moved at some point to
