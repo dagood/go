@@ -5,8 +5,9 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-# This template determines the correct pool and passes it into the provided
-# inner stages template.
+# This template determines the correct pool names and agent demands based on the
+# current branch and AzDO project and passes them into the provided inner stages
+# template.
 #
 # Previously, this was a 3-file chain (pool.yml -> pool-1.yml -> pool-2.yml)
 # because AzDO template expressions can't compute a value and reuse it later in

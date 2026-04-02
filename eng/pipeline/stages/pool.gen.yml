@@ -2,8 +2,9 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-# This template determines the correct pool and passes it into the provided
-# inner stages template.
+# This template determines the correct pool names and agent demands based on the
+# current branch and AzDO project and passes them into the provided inner stages
+# template.
 #
 # Previously, this was a 3-file chain (pool.yml -> pool-1.yml -> pool-2.yml)
 # because AzDO template expressions can't compute a value and reuse it later in
@@ -14,7 +15,9 @@ pipelineymlgen:
   output: self
   data:
     # Shorthand for AzDO expressions that are reused multiple times below.
+    # "public" (vs. internal) AzDO project.
     public: "eq(variables['System.TeamProject'], 'public')"
+    # "servicing" (vs. R&D) branch.
     servicing: "startsWith(variables['Build.SourceBranch'], 'refs/heads/microsoft/release-branch')"
     os: "parameters.inner.parameters.builder.os"
     hostArch: "parameters.inner.parameters.builder.hostArch"
