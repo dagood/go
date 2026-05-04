@@ -109,10 +109,11 @@ extends:
     stages:
       - template: stages/go-builder-matrix-stages.yml
         parameters:
-          go1ESOfficial: ${{ variables['Go1ESOfficial'] }}
-          publishArtifacts: ${{ variables['GoPublishArtifacts'] }}
-          publishReleaseStudio: ${{ variables['GoPublishReleaseStudio'] }}
-          signingType: ${{ variables['GoSigningType'] }}
+          pipelineConfig:
+            go1ESOfficial: ${{ variables['Go1ESOfficial'] }}
+            publishArtifacts: ${{ variables['GoPublishArtifacts'] }}
+            publishReleaseStudio: ${{ variables['GoPublishReleaseStudio'] }}
+            signingType: ${{ variables['GoSigningType'] }}
           buildandpack: true
           sign: true
           signExistingRunID: ${{ parameters.signExistingRunID }}

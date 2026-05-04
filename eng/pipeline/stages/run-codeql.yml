@@ -5,13 +5,8 @@
 # This job runs a builder for any OS.
 
 parameters:
-  - name: go1ESOfficial # Ignored
+  - name: pipelineConfig # Ignored
     type: object
-    default: false
-
-  - name: publishArtifacts # Ignored
-    type: object
-    default: false
 
   # { id, os, arch, hostArch, config, distro?, experiment?, fips?, broken? }
   - name: builder

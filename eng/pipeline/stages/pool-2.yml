@@ -3,9 +3,8 @@
 # license that can be found in the LICENSE file.
 
 parameters:
-  - name: go1ESOfficial
+  - name: pipelineConfig
     type: object
-    default: false
 
   - name: inner
     type: object
@@ -33,7 +32,7 @@ stages:
         name: ${{ parameters.name }}
 
         ${{ if eq(parameters.os, 'windows') }}:
-          ${{ if parameters.go1ESOfficial }}:
+          ${{ if parameters.pipelineConfig.go1ESOfficial }}:
             image: 1es-windows-${{ parameters.distro }}
             os: windows
           ${{ elseif parameters.public }}:
@@ -46,7 +45,7 @@ stages:
         ${{ elseif eq(parameters.os, 'linux') }}:
           # The arm64 pool doesn't need demands: it runs on a uniform pool.
           ${{ if ne(parameters.name, 'Docker-Linux-Arm-Internal') }}:
-            ${{ if parameters.go1ESOfficial }}:
+            ${{ if parameters.pipelineConfig.go1ESOfficial }}:
               image: 1es-ubuntu-2204
               os: linux
             ${{ elseif parameters.public }}:

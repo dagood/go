@@ -5,18 +5,13 @@
 # This template defines the build/test matrix of jobs/stages based on the given flags.
 
 parameters:
-  - name: go1ESOfficial
+  - name: pipelineConfig
     type: object
-    default: false
-  - name: publishArtifacts
-    type: object
-    default: false
-  - name: publishReleaseStudio
-    type: object
-    default: false
-  - name: signingType
-    type: string
-    default: test
+    default:
+      go1ESOfficial: false
+      publishArtifacts: false
+      publishReleaseStudio: false
+      signingType: test
 
   # buildandpack builders build the tar.gz/zips of our distribution.
   # Minimal dependencies, and runnable in the official pipeline.
@@ -65,10 +60,7 @@ stages:
     parameters:
       jobsTemplate: builders-to-stages.yml
       jobsParameters:
-        go1ESOfficial: ${{ parameters.go1ESOfficial }}
-        publishArtifacts: ${{ parameters.publishArtifacts }}
-        publishReleaseStudio: ${{ parameters.publishReleaseStudio }}
-        signingType: ${{ parameters.signingType }}
+        pipelineConfig: ${{ parameters.pipelineConfig }}
         sign: ${{ parameters.sign }}
         signExistingRunID: ${{ parameters.signExistingRunID }}
         publish: ${{ parameters.publish }}

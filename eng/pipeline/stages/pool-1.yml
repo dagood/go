@@ -3,9 +3,8 @@
 # license that can be found in the LICENSE file.
 
 parameters:
-  - name: go1ESOfficial
+  - name: pipelineConfig
     type: object
-    default: false
 
   - name: inner
     type: object

@@ -90,7 +90,8 @@ extends:
       - template: /eng/pipeline/stages/shorthand-builders-to-builders.yml@self
         parameters:
           jobsParameters:
-            go1ESOfficial: ${ yml .official }
+            pipelineConfig:
+              go1ESOfficial: ${ yml .official }
           jobsTemplate: builders-to-stages.yml
           shorthandBuilders:
             # CodeQL doesn't submit the scan to both the outer repo
