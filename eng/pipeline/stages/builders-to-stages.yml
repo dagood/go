@@ -5,9 +5,6 @@
 # This template expands a list of builders into a list of jobs.
 
 parameters:
-  - name: pipelineConfig
-    type: object
-
   # [] of { id, os, arch, hostarch, config, distro?, experiment?, broken? }
   - name: builders
     type: object
@@ -45,14 +42,12 @@ stages:
       - ${{ each builder in parameters.builders }}:
         - template: pool.yml
           parameters:
-            pipelineConfig: ${{ parameters.pipelineConfig }}
             inner:
               ${{ if startsWith(builder.config, 'codeql') }}:
                 template: run-codeql.yml
               ${{ else }}:
                 template: run-stage.yml
               parameters:
-                pipelineConfig: ${{ parameters.pipelineConfig }}
                 builder: ${{ builder }}
                 createSourceArchive: ${{ parameters.createSourceArchive }}
                 releaseVersion: ${{ parameters.releaseVersion }}
@@ -70,11 +65,10 @@ stages:
     - ${{ if eq(parameters.sign, true) }}:
       - template: pool.yml
         parameters:
-          pipelineConfig: ${{ parameters.pipelineConfig }}
           inner:
             template: sign-stage.yml
             parameters:
-              signingType: ${{ parameters.pipelineConfig.signingType }}
+              signingType: ${{ variables['GoSigningType'] }}
               # This is not a builder, but provide partial builder info for agent selection.
               builder: { os: windows, arch: amd64, distro: '2022' }
               # The list of builders to depend on and grab artifacts from.
@@ -85,10 +79,9 @@ stages:
               signExistingRunID: ${{ parameters.signExistingRunID }}
 
   - ${{ if eq(parameters.publish, true) }}:
-    - ${{ if parameters.pipelineConfig.publishReleaseStudio }}:
+    - ${{ if variables['GoPublishReleaseStudio'] }}:
       - template: pool.yml
         parameters:
-          pipelineConfig: ${{ parameters.pipelineConfig }}
           inner:
             template: public-publish-stages.yml
             parameters:
@@ -97,10 +90,9 @@ stages:
 
     # If publishing, always publish the results to a private storage account and
     # publish symbols to AzDO.
-    - ${{ if parameters.pipelineConfig.go1ESOfficial }}:
+    - ${{ if variables['Go1ESOfficial'] }}:
       - template: pool.yml
         parameters:
-          pipelineConfig: ${{ parameters.pipelineConfig }}
           inner:
             template: internal-publish-stage.yml
             parameters:

@@ -14,9 +14,6 @@
 # choices. Each pool*.yml feeds more information into the next one.
 
 parameters:
-  - name: pipelineConfig
-    type: object
-
   # The inner template: { template string, parameters object }
   # Note: the template path is relative to this file (inside "stages/"), not the caller's file path.
   - name: inner
@@ -25,7 +22,6 @@ parameters:
 stages:
   - template: pool-1.yml
     parameters:
-      pipelineConfig: ${{ parameters.pipelineConfig }}
       public: ${{ eq(variables['System.TeamProject'], 'public') }}
       servicing: ${{ startsWith(variables['Build.SourceBranch'], 'refs/heads/microsoft/release-branch') }}
       os: ${{ parameters.inner.parameters.builder.os }}

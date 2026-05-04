@@ -35,6 +35,11 @@ variables:
   - template: variables/pipeline.yml
   - template: variables/codeql.yml
   - template: variables/pool-providers.yml
+  # The two generated validation pipelines explicitly choose their 1ES template
+  # based on .official, so match the shared Go1ESOfficial variable to that same
+  # generated value rather than relying on the pipeline definition name.
+  - name: Go1ESOfficial
+    value: ${ yml (ternary "true" "" .official) }
 
   - ${ inlineif (not .official) }:
     # The default cadence is ok for official branches. The cadence is per-branch.
@@ -89,9 +94,6 @@ extends:
     stages:
       - template: /eng/pipeline/stages/shorthand-builders-to-builders.yml@self
         parameters:
-          jobsParameters:
-            pipelineConfig:
-              go1ESOfficial: ${ yml .official }
           jobsTemplate: builders-to-stages.yml
           shorthandBuilders:
             # CodeQL doesn't submit the scan to both the outer repo

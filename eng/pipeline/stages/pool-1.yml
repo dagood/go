@@ -3,9 +3,6 @@
 # license that can be found in the LICENSE file.
 
 parameters:
-  - name: pipelineConfig
-    type: object
-
   - name: inner
     type: object
 

@@ -25,6 +25,11 @@ variables:
   - template: variables/pipeline.yml
   - template: variables/codeql.yml
   - template: variables/pool-providers.yml
+  # The two generated validation pipelines explicitly choose their 1ES template
+  # based on .official, so match the shared Go1ESOfficial variable to that same
+  # generated value rather than relying on the pipeline definition name.
+  - name: Go1ESOfficial
+    value: "true"
 resources:
   pipelines:
     - pipeline: build
@@ -65,9 +70,6 @@ extends:
     stages:
       - template: /eng/pipeline/stages/shorthand-builders-to-builders.yml@self
         parameters:
-          jobsParameters:
-            pipelineConfig:
-              go1ESOfficial: true
           jobsTemplate: builders-to-stages.yml
           shorthandBuilders:
             # CodeQL doesn't submit the scan to both the outer repo
