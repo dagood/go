@@ -3,8 +3,9 @@
 # license that can be found in the LICENSE file.
 
 parameters:
-  - name: ctx
+  - name: go1ESOfficial
     type: object
+    default: false
 
   - name: inner
     type: object

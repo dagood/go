@@ -6,9 +6,6 @@
 # Studio integration.
 
 parameters:
-  - name: ctx
-    type: object
-
   - name: pool
     type: object
 
@@ -23,7 +20,6 @@ parameters:
 stages:
   - template: public-publish-stage.yml
     parameters:
-      ctx: ${{ parameters.ctx }}
       pool: ${{ parameters.pool }}
 
       id: PublishPublicBinaries
@@ -59,7 +55,6 @@ stages:
 
   - template: public-publish-stage.yml
     parameters:
-      ctx: ${{ parameters.ctx }}
       pool: ${{ parameters.pool }}
       id: WaitPublicBinaries
       dependsOn: PublishPublicBinaries
@@ -100,7 +95,6 @@ stages:
 
   - template: public-publish-stage.yml
     parameters:
-      ctx: ${{ parameters.ctx }}
       pool: ${{ parameters.pool }}
       id: PublishAssetManifest
       dependsOn: WaitPublicBinaries
@@ -155,7 +149,6 @@ stages:
 
   - template: public-publish-stage.yml
     parameters:
-      ctx: ${{ parameters.ctx }}
       pool: ${{ parameters.pool }}
       id: WaitAssetManifest
       dependsOn: PublishAssetManifest

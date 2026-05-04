@@ -56,7 +56,6 @@ extends:
     stages:
       - template: stages/go-builder-matrix-stages.yml
         parameters:
-          ctx: {}
           innerloop: true
           # Include buildandpack builders. The official internal build uses slightly different build
           # machines than this pipeline. This one tests against our minimum requirements.

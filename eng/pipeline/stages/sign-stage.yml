@@ -6,8 +6,8 @@
 # publishes the signed files and signatures into a consolidated pipeline artifact.
 
 parameters:
-  - name: ctx
-    type: object
+  - name: signingType
+    type: string
 
   - name: builder
     type: object
@@ -23,7 +23,7 @@ parameters:
 
 stages:
   - stage: Sign
-    displayName: Sign (${{ parameters.ctx['GoSigningType'] }})
+    displayName: Sign (${{ parameters.signingType }})
     ${{ if eq(parameters.signExistingRunID, 'nil') }}:
       dependsOn:
         # Depend on all build stages that produced artifacts that need signing.
@@ -34,7 +34,7 @@ stages:
     jobs:
       - ${{ if and(ne(variables['System.TeamProject'], 'public'), ne(variables['Build.Reason'], 'PullRequest')) }}:
         - job: Sign
-          displayName: Sign (${{ parameters.ctx['GoSigningType'] }})
+          displayName: Sign (${{ parameters.signingType }})
           pool: ${{ parameters.pool }}
           workspace:
             clean: all
@@ -54,9 +54,9 @@ stages:
             mb:
               signing:
                 enabled: true
-                ${{ if eq(parameters.ctx['GoSigningType'], 'real') }}:
+                ${{ if eq(parameters.signingType, 'real') }}:
                   signWithProd: true
-                signType: ${{ parameters.ctx['GoSigningType'] }}
+                signType: ${{ parameters.signingType }}
                 zipSources: false
                 feedSource: 'https://dnceng.pkgs.visualstudio.com/_packaging/MicroBuildToolset/nuget/v3/index.json'
             # If we consolidate outputs, 1ES PT can avoid some scan overhead.

@@ -38,12 +38,11 @@ resources:
       - container: ${ .container }
         image: ${ .image }
 
-stages:
-  - template: stages/go-builder-matrix-stages.yml
-    parameters:
-      ctx: {}
-      ${ inlineif .outerloop }:
-        outerloop: true
-      ${ inlineelse }:
-        innerloop: true
-        buildandpack: true
+  stages:
+    - template: stages/go-builder-matrix-stages.yml
+      parameters:
+        ${ inlineif .outerloop }:
+          outerloop: true
+        ${ inlineelse }:
+          innerloop: true
+          buildandpack: true

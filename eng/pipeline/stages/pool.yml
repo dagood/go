@@ -14,8 +14,9 @@
 # choices. Each pool*.yml feeds more information into the next one.
 
 parameters:
-  - name: ctx
+  - name: go1ESOfficial
     type: object
+    default: false
 
   # The inner template: { template string, parameters object }
   # Note: the template path is relative to this file (inside "stages/"), not the caller's file path.
@@ -25,7 +26,7 @@ parameters:
 stages:
   - template: pool-1.yml
     parameters:
-      ctx: ${{ parameters.ctx }}
+      go1ESOfficial: ${{ parameters.go1ESOfficial }}
       public: ${{ eq(variables['System.TeamProject'], 'public') }}
       servicing: ${{ startsWith(variables['Build.SourceBranch'], 'refs/heads/microsoft/release-branch') }}
       os: ${{ parameters.inner.parameters.builder.os }}

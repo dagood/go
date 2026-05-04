@@ -5,8 +5,18 @@
 # This template expands a list of builders into a list of jobs.
 
 parameters:
-  - name: ctx
+  - name: go1ESOfficial
     type: object
+    default: false
+  - name: publishArtifacts
+    type: object
+    default: false
+  - name: publishReleaseStudio
+    type: object
+    default: false
+  - name: signingType
+    type: string
+    default: test
 
   # [] of { id, os, arch, hostarch, config, distro?, experiment?, broken? }
   - name: builders
@@ -45,14 +55,15 @@ stages:
       - ${{ each builder in parameters.builders }}:
         - template: pool.yml
           parameters:
-            ctx: ${{ parameters.ctx }}
+            go1ESOfficial: ${{ parameters.go1ESOfficial }}
             inner:
               ${{ if startsWith(builder.config, 'codeql') }}:
                 template: run-codeql.yml
               ${{ else }}:
                 template: run-stage.yml
               parameters:
-                ctx: ${{ parameters.ctx }}
+                go1ESOfficial: ${{ parameters.go1ESOfficial }}
+                publishArtifacts: ${{ parameters.publishArtifacts }}
                 builder: ${{ builder }}
                 createSourceArchive: ${{ parameters.createSourceArchive }}
                 releaseVersion: ${{ parameters.releaseVersion }}
@@ -70,11 +81,11 @@ stages:
     - ${{ if eq(parameters.sign, true) }}:
       - template: pool.yml
         parameters:
-          ctx: ${{ parameters.ctx }}
+          go1ESOfficial: ${{ parameters.go1ESOfficial }}
           inner:
             template: sign-stage.yml
             parameters:
-              ctx: ${{ parameters.ctx }}
+              signingType: ${{ parameters.signingType }}
               # This is not a builder, but provide partial builder info for agent selection.
               builder: { os: windows, arch: amd64, distro: '2022' }
               # The list of builders to depend on and grab artifacts from.
@@ -85,27 +96,25 @@ stages:
               signExistingRunID: ${{ parameters.signExistingRunID }}
 
   - ${{ if eq(parameters.publish, true) }}:
-    - ${{ if parameters.ctx['GoPublishReleaseStudio'] }}:
+    - ${{ if parameters.publishReleaseStudio }}:
       - template: pool.yml
         parameters:
-          ctx: ${{ parameters.ctx }}
+          go1ESOfficial: ${{ parameters.go1ESOfficial }}
           inner:
             template: public-publish-stages.yml
             parameters:
-              ctx: ${{ parameters.ctx }}
               builder: { os: windows, arch: amd64, distro: '2022' }
               publishExistingRunID: ${{ parameters.publishExistingRunID }}
 
     # If publishing, always publish the results to a private storage account and
     # publish symbols to AzDO.
-    - ${{ if parameters.ctx['Go1ESOfficial'] }}:
+    - ${{ if parameters.go1ESOfficial }}:
       - template: pool.yml
         parameters:
-          ctx: ${{ parameters.ctx }}
+          go1ESOfficial: ${{ parameters.go1ESOfficial }}
           inner:
             template: internal-publish-stage.yml
             parameters:
-              ctx: ${{ parameters.ctx }}
               builder: { os: windows, arch: amd64, distro: '2022' }
               builders:
                 - ${{ each builder in parameters.builders }}:

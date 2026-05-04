@@ -5,9 +5,6 @@
 # Create a build asset JSON file as a pipeline artifact and publish build artifacts to blob storage.
 
 parameters:
-  - name: ctx
-    type: object
-
   - name: pool
     type: object
 

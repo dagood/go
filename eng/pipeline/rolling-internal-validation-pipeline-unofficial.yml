@@ -65,10 +65,8 @@ extends:
     stages:
       - template: /eng/pipeline/stages/shorthand-builders-to-builders.yml@self
         parameters:
-          ctx:
-            ${{ each variable in variables }}:
-              ${{ if startsWith(variable.key, 'Go') }}:
-                ${{ variable.key }}: ${{ variable.value }}
+          jobsParameters:
+            go1ESOfficial: false
           jobsTemplate: builders-to-stages.yml
           shorthandBuilders:
             # CodeQL doesn't submit the scan to both the outer repo

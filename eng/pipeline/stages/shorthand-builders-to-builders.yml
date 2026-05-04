@@ -11,9 +11,6 @@
 # to be used by template expressions, as of writing.
 
 parameters:
-  - name: ctx
-    type: object
-
   # [] of { os, arch, hostArch, config, distro?, experiment?, broken? }
   # If hostArch is not defined, defaults to the arch value.
   # The job ID is generated based on these values.
@@ -31,7 +28,6 @@ parameters:
 stages:
   - template: ${{ parameters.jobsTemplate }}
     parameters:
-      ctx: ${{ parameters.ctx }}
       ${{ insert }}: ${{ parameters.jobsParameters }}
       builders:
         - ${{ each builder in parameters.shorthandBuilders }}:

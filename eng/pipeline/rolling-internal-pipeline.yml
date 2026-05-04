@@ -109,20 +109,10 @@ extends:
     stages:
       - template: stages/go-builder-matrix-stages.yml
         parameters:
-          # There is a limitation with compile-time references to user-defined
-          # variables: each stages template actually has its own "variables" map
-          # and doesn't inherit global variables other than default ones. Values
-          # that can be used in this file like "variables['Go1ESOfficial']" must
-          # be passed along manually for compile-time use like
-          # "parameters.ctx['Go1ESOfficial']" by templates. This limitation is not
-          # documented as of writing.
-          #
-          # Only pass "Go*" variables to avoid built-in variables. There are a
-          # lot, and they clutter attempts to debug pipeline behavior.
-          ctx:
-            ${{ each variable in variables }}:
-              ${{ if startsWith(variable.key, 'Go') }}:
-                ${{ variable.key }}: ${{ variable.value }}
+          go1ESOfficial: ${{ variables['Go1ESOfficial'] }}
+          publishArtifacts: ${{ variables['GoPublishArtifacts'] }}
+          publishReleaseStudio: ${{ variables['GoPublishReleaseStudio'] }}
+          signingType: ${{ variables['GoSigningType'] }}
           buildandpack: true
           sign: true
           signExistingRunID: ${{ parameters.signExistingRunID }}

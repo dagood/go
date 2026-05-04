@@ -50,5 +50,4 @@ extends:
     stages:
       - template: stages/go-builder-matrix-stages.yml
         parameters:
-          ctx: {}
           outerloop: true

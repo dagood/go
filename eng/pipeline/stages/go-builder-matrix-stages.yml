@@ -5,8 +5,18 @@
 # This template defines the build/test matrix of jobs/stages based on the given flags.
 
 parameters:
-  - name: ctx
+  - name: go1ESOfficial
     type: object
+    default: false
+  - name: publishArtifacts
+    type: object
+    default: false
+  - name: publishReleaseStudio
+    type: object
+    default: false
+  - name: signingType
+    type: string
+    default: test
 
   # buildandpack builders build the tar.gz/zips of our distribution.
   # Minimal dependencies, and runnable in the official pipeline.
@@ -53,9 +63,12 @@ parameters:
 stages:
   - template: shorthand-builders-to-builders.yml
     parameters:
-      ctx: ${{ parameters.ctx }}
       jobsTemplate: builders-to-stages.yml
       jobsParameters:
+        go1ESOfficial: ${{ parameters.go1ESOfficial }}
+        publishArtifacts: ${{ parameters.publishArtifacts }}
+        publishReleaseStudio: ${{ parameters.publishReleaseStudio }}
+        signingType: ${{ parameters.signingType }}
         sign: ${{ parameters.sign }}
         signExistingRunID: ${{ parameters.signExistingRunID }}
         publish: ${{ parameters.publish }}
