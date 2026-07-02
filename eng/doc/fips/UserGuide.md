@@ -55,6 +55,13 @@ The Go crypto documentation is available online at https://pkg.go.dev/crypto.
     - [crypto/md5](#cryptomd5)
       - [func New](#func-new-1)
       - [func Sum](#func-sum)
+    - [crypto/mldsa](#cryptomldsa)
+      - [func GenerateKey](#func-generatekey-2)
+      - [func NewPrivateKey](#func-newprivatekey)
+      - [func NewPublicKey](#func-newpublickey)
+      - [func PrivateKey.Sign](#func-privatekeysign-2)
+      - [func PrivateKey.SignDeterministic](#func-privatekeysigndeterministic)
+      - [func Verify](#func-verify-2)
     - [crypto/rand](#cryptorand)
       - [var Reader](#var-reader)
       - [func Int](#func-int)
@@ -88,10 +95,10 @@ The Go crypto documentation is available online at https://pkg.go.dev/crypto.
       - [func SignPSS](#func-signpss)
       - [func VerifyPKCS1v15](#func-verifypkcs1v15)
       - [func VerifyPSS](#func-verifypss)
-      - [func GenerateKey](#func-generatekey-2)
+      - [func GenerateKey](#func-generatekey-3)
       - [func GenerateMultiPrimeKey](#func-generatemultiprimekey)
       - [func PrivateKey.Decrypt](#func-privatekeydecrypt)
-      - [func PrivateKey.Sign](#func-privatekeysign-2)
+      - [func PrivateKey.Sign](#func-privatekeysign-3)
     - [crypto/subtle](#cryptosubtle)
     - [crypto/tls](#cryptotls)
 
@@ -1022,6 +1029,88 @@ func md5.Sum(data []byte) [15]byte
 
 Sum returns the MD5 checksum of the data.
 It internally uses md5.New() to compute the checksum.
+
+### [crypto/mldsa](https://pkg.go.dev/crypto/mldsa)
+
+Package mldsa implements the post-quantum ML-DSA signature scheme specified in [FIPS 204](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf).
+
+The package is only available when using the [FIPS 140-3 Go Cryptographic Module](https://go.dev/doc/security/fips140) v1.26.0 or later. It is available from the Microsoft build of Go 1.27.
+
+**Implementation**
+
+ML-DSA operations are dispatched to the platform crypto backend (OpenSSL on Linux and FreeBSD, CNG on Windows, and CryptoKit/CommonCrypto on macOS) when the backend is enabled, `crypto/rand.Reader` is the default reader, and the backend supports the requested parameter set. Otherwise the operation is performed by the FIPS 140-3 Go Cryptographic Module.
+
+The parameter sets each platform supports, along with their minimum platform versions, are listed in the [ML-DSA section of CrossPlatformCryptography.md](../CrossPlatformCryptography.md#ml-dsa).
+
+Deterministic signing is always performed by the Go cryptographic module. External-mu signing (`Sign` with `crypto.MLDSAMu`) also falls back to the Go cryptographic module on platforms whose backend does not implement it (currently macOS).
+
+#### func [GenerateKey](https://pkg.go.dev/crypto/mldsa#GenerateKey)
+
+```go
+func mldsa.GenerateKey(params Parameters) (*PrivateKey, error)
+```
+
+GenerateKey generates a new random ML-DSA private key for the given parameter set.
+
+**Requirements**
+
+- `crypto/rand.Reader` must be the default reader. Otherwise, falls back to the Go cryptographic module.
+- The backend must support the requested parameter set. Otherwise, falls back to the Go cryptographic module.
+
+#### func [NewPrivateKey](https://pkg.go.dev/crypto/mldsa#NewPrivateKey)
+
+```go
+func mldsa.NewPrivateKey(params Parameters, seed []byte) (*PrivateKey, error)
+```
+
+NewPrivateKey decodes an ML-DSA private key from the given seed. The seed must be exactly `PrivateKeySize` bytes long.
+
+**Requirements**
+
+- `crypto/rand.Reader` must be the default reader. Otherwise, falls back to the Go cryptographic module.
+- The backend must support the requested parameter set. Otherwise, falls back to the Go cryptographic module.
+
+#### func [NewPublicKey](https://pkg.go.dev/crypto/mldsa#NewPublicKey)
+
+```go
+func mldsa.NewPublicKey(params Parameters, encoding []byte) (*PublicKey, error)
+```
+
+NewPublicKey creates a new ML-DSA public key from the given encoding.
+
+**Requirements**
+
+- `crypto/rand.Reader` must be the default reader. Otherwise, falls back to the Go cryptographic module.
+- The backend must support the requested parameter set. Otherwise, falls back to the Go cryptographic module.
+
+#### func [PrivateKey.Sign](https://pkg.go.dev/crypto/mldsa#PrivateKey.Sign)
+
+```go
+func (sk *PrivateKey) Sign(rand io.Reader, message []byte, opts crypto.SignerOpts) (signature []byte, err error)
+```
+
+Sign signs the given message with `sk`. The `rand` argument is ignored and can be nil. If `opts.HashFunc` returns `crypto.MLDSAMu`, `message` must be a pre-hashed mu message representative.
+
+**Requirements**
+
+- Direct signing (`opts` is nil or `opts.HashFunc` returns zero) is performed by the backend when the key is backend-backed.
+- External-mu signing (`opts.HashFunc` returns `crypto.MLDSAMu`) is performed by the backend only where it is implemented; on macOS it falls back to the Go cryptographic module.
+
+#### func [PrivateKey.SignDeterministic](https://pkg.go.dev/crypto/mldsa#PrivateKey.SignDeterministic)
+
+```go
+func (sk *PrivateKey) SignDeterministic(message []byte, opts crypto.SignerOpts) (signature []byte, err error)
+```
+
+SignDeterministic works like [Sign](https://pkg.go.dev/crypto/mldsa#PrivateKey.Sign), but the signature is deterministic. It is always performed by the Go cryptographic module, as deterministic signing is not implemented by the crypto backends.
+
+#### func [Verify](https://pkg.go.dev/crypto/mldsa#Verify)
+
+```go
+func mldsa.Verify(pk *PublicKey, message []byte, signature []byte, opts *Options) error
+```
+
+Verify reports whether signature is a valid signature of message by pk, returning a nil error when it is. Verification is performed by the same implementation (backend or Go cryptographic module) that produced `pk`.
 
 ### [crypto/rand](https://pkg.go.dev/crypto/rand)
 

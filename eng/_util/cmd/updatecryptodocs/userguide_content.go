@@ -750,6 +750,81 @@ var userGuideContent = []ugPackage{
 		},
 	},
 	{
+		Import: "crypto/mldsa",
+		Doc: "Package mldsa implements the post-quantum ML-DSA signature scheme specified in [FIPS 204](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf).\n" +
+			"\n" +
+			"The package is only available when using the [FIPS 140-3 Go Cryptographic Module](https://go.dev/doc/security/fips140) v1.26.0 or later. It is available from the Microsoft build of Go 1.27.",
+		Impl: &ugImpl{
+			Text: "ML-DSA operations are dispatched to the platform crypto backend (OpenSSL on Linux and FreeBSD, CNG on Windows, and CryptoKit/CommonCrypto on macOS) when the backend is enabled, `crypto/rand.Reader` is the default reader, and the backend supports the requested parameter set. Otherwise the operation is performed by the FIPS 140-3 Go Cryptographic Module.\n" +
+				"\n" +
+				"The parameter sets each platform supports, along with their minimum platform versions, are listed in the [ML-DSA section of CrossPlatformCryptography.md](../CrossPlatformCryptography.md#ml-dsa).\n" +
+				"\n" +
+				"Deterministic signing is always performed by the Go cryptographic module. External-mu signing (`Sign` with `crypto.MLDSAMu`) also falls back to the Go cryptographic module on platforms whose backend does not implement it (currently macOS).",
+		},
+		Entries: []ugEntry{
+			{
+				Kind:      "func",
+				Name:      "GenerateKey",
+				Signature: "func mldsa.GenerateKey(params Parameters) (*PrivateKey, error)",
+				Doc:       "GenerateKey generates a new random ML-DSA private key for the given parameter set.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"`crypto/rand.Reader` must be the default reader. Otherwise, falls back to the Go cryptographic module.",
+						"The backend must support the requested parameter set. Otherwise, falls back to the Go cryptographic module.",
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "NewPrivateKey",
+				Signature: "func mldsa.NewPrivateKey(params Parameters, seed []byte) (*PrivateKey, error)",
+				Doc:       "NewPrivateKey decodes an ML-DSA private key from the given seed. The seed must be exactly `PrivateKeySize` bytes long.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"`crypto/rand.Reader` must be the default reader. Otherwise, falls back to the Go cryptographic module.",
+						"The backend must support the requested parameter set. Otherwise, falls back to the Go cryptographic module.",
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "NewPublicKey",
+				Signature: "func mldsa.NewPublicKey(params Parameters, encoding []byte) (*PublicKey, error)",
+				Doc:       "NewPublicKey creates a new ML-DSA public key from the given encoding.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"`crypto/rand.Reader` must be the default reader. Otherwise, falls back to the Go cryptographic module.",
+						"The backend must support the requested parameter set. Otherwise, falls back to the Go cryptographic module.",
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "PrivateKey.Sign",
+				Signature: "func (sk *PrivateKey) Sign(rand io.Reader, message []byte, opts crypto.SignerOpts) (signature []byte, err error)",
+				Doc:       "Sign signs the given message with `sk`. The `rand` argument is ignored and can be nil. If `opts.HashFunc` returns `crypto.MLDSAMu`, `message` must be a pre-hashed mu message representative.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"Direct signing (`opts` is nil or `opts.HashFunc` returns zero) is performed by the backend when the key is backend-backed.",
+						"External-mu signing (`opts.HashFunc` returns `crypto.MLDSAMu`) is performed by the backend only where it is implemented; on macOS it falls back to the Go cryptographic module.",
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "PrivateKey.SignDeterministic",
+				Signature: "func (sk *PrivateKey) SignDeterministic(message []byte, opts crypto.SignerOpts) (signature []byte, err error)",
+				Doc:       "SignDeterministic works like [Sign](https://pkg.go.dev/crypto/mldsa#PrivateKey.Sign), but the signature is deterministic. It is always performed by the Go cryptographic module, as deterministic signing is not implemented by the crypto backends.",
+			},
+			{
+				Kind:      "func",
+				Name:      "Verify",
+				Signature: "func mldsa.Verify(pk *PublicKey, message []byte, signature []byte, opts *Options) error",
+				Doc:       "Verify reports whether signature is a valid signature of message by pk, returning a nil error when it is. Verification is performed by the same implementation (backend or Go cryptographic module) that produced `pk`.",
+			},
+		},
+	},
+	{
 		Import: "crypto/rand",
 		Doc:    "Package rand implements a cryptographically secure random number generator.",
 		Entries: []ugEntry{

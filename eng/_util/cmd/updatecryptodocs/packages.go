@@ -39,6 +39,7 @@ var cryptoPackages = []CryptoPackage{
 	{ImportPath: "crypto/elliptic", InUserGuide: true},
 	{ImportPath: "crypto/hmac", InUserGuide: true},
 	{ImportPath: "crypto/md5", InUserGuide: true},
+	{ImportPath: "crypto/mldsa", InUserGuide: true},
 	{ImportPath: "crypto/rand", InUserGuide: true},
 	{ImportPath: "crypto/rc4", InUserGuide: true},
 	{ImportPath: "crypto/sha1", InUserGuide: true},
@@ -50,7 +51,6 @@ var cryptoPackages = []CryptoPackage{
 
 	// Packages referenced only by CrossPlatformCryptography.md.
 	{ImportPath: "crypto/sha3"},
-	{ImportPath: "crypto/mldsa"},
 	{ImportPath: "crypto/mlkem"},
 	{ImportPath: "crypto/hpke"},
 	{ImportPath: "crypto/hkdf"},
