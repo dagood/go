@@ -10,9 +10,10 @@ type CryptoPackage struct {
 	// ImportPath is the Go import path of the package, e.g. "crypto/aes".
 	ImportPath string
 	// InUserGuide indicates whether the package has a dedicated section in the
-	// FIPS User Guide. When true, the package's section header is generated and
-	// its body is taken from userguide_bodies.md. The order of the User Guide
-	// sections follows the order of the InUserGuide entries in cryptoPackages.
+	// FIPS User Guide. When true, the package's section is generated from its
+	// entry in userGuideContent (userguide_content.go). The order of the User
+	// Guide sections follows the order of the InUserGuide entries in
+	// cryptoPackages.
 	InUserGuide bool
 }
 
