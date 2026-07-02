@@ -665,6 +665,59 @@ var userGuideContent = []ugPackage{
 			"```",
 	},
 	{
+		Import: "crypto/hkdf",
+		Doc: "Package hkdf implements the HMAC-based Extract-and-Expand Key Derivation Function (HKDF) as defined in RFC 5869.\n" +
+			"\n" +
+			"The hash function passed to the HKDF APIs must be one supported by the crypto backend (see [crypto/sha1](#cryptosha1), [crypto/sha256](#cryptosha256), [crypto/sha512](#cryptosha512), and [crypto/sha3](#cryptosha3)). If the hash is not supported by the backend, the operation falls back to standard Go crypto.",
+		Entries: []ugEntry{
+			{
+				Kind:      "func",
+				Name:      "Extract",
+				Signature: "func hkdf.Extract[H hash.Hash](h func() H, secret, salt []byte) ([]byte, error)",
+				Doc:       "Extract generates a pseudorandom key for use with [hkdf.Expand](#func-expand) from the input `secret` and an optional `salt`.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"`h` must return a hash supported by the crypto backend.",
+					},
+				},
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("The pseudorandom key is derived using the HKDF KDF in extract-only mode.\n" +
+							"On OpenSSL 1.x this uses [EVP_PKEY_derive] with an `EVP_PKEY_HKDF` context configured with `EVP_PKEY_HKDF_MODE_EXTRACT_ONLY`.\n" +
+							"On OpenSSL 3.x this uses [EVP_KDF_derive] with the `HKDF` KDF set to extract-only mode."),
+						cng("The pseudorandom key is derived using [BCryptKeyDerivation] with the `BCRYPT_HKDF_ALGORITHM` [algorithm identifier], setting the hash with the `BCRYPT_HKDF_HASH_ALGORITHM` property and finalizing with the `BCRYPT_HKDF_SALT_AND_FINALIZE` property."),
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "Expand",
+				Signature: "func hkdf.Expand[H hash.Hash](h func() H, pseudorandomKey []byte, info string, keyLength int) ([]byte, error)",
+				Doc:       "Expand derives a key of `keyLength` bytes from the given `pseudorandomKey` and optional `info`, returned by [hkdf.Extract](#func-extract).",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"`h` must return a hash supported by the crypto backend.",
+					},
+				},
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("The key is derived using the HKDF KDF in expand-only mode.\n" +
+							"On OpenSSL 1.x this uses [EVP_PKEY_derive] with an `EVP_PKEY_HKDF` context configured with `EVP_PKEY_HKDF_MODE_EXPAND_ONLY`.\n" +
+							"On OpenSSL 3.x this uses [EVP_KDF_derive] with the `HKDF` KDF set to expand-only mode."),
+						cng("The key is derived using [BCryptKeyDerivation] with the `BCRYPT_HKDF_ALGORITHM` [algorithm identifier], setting the pseudorandom key with the `BCRYPT_HKDF_PRK_AND_FINALIZE` property and the info with the `BCRYPT_HKDF_INFO` parameter."),
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "Key",
+				Signature: "func hkdf.Key[H hash.Hash](h func() H, secret, salt []byte, info string, keyLength int) ([]byte, error)",
+				Doc: "Key derives a key of `keyLength` bytes from the given `secret`, `salt`, and `info`.\n" +
+					"It is a convenience function that internally calls [hkdf.Extract](#func-extract) followed by [hkdf.Expand](#func-expand), and is subject to the same requirements.",
+			},
+		},
+	},
+	{
 		Import: "crypto/hmac",
 		Doc:    "Package hmac implements the Keyed-Hash Message Authentication Code (HMAC) as defined in U.S. Federal Information Processing Standards Publication 198.",
 		Entries: []ugEntry{
@@ -821,6 +874,82 @@ var userGuideContent = []ugPackage{
 				Name:      "Verify",
 				Signature: "func mldsa.Verify(pk *PublicKey, message []byte, signature []byte, opts *Options) error",
 				Doc:       "Verify reports whether signature is a valid signature of message by pk, returning a nil error when it is. Verification is performed by the same implementation (backend or Go cryptographic module) that produced `pk`.",
+			},
+		},
+	},
+	{
+		Import: "crypto/mlkem",
+		Doc: "Package mlkem implements the post-quantum ML-KEM key encapsulation method as defined in FIPS 203.\n" +
+			"\n" +
+			"ML-KEM-768 and ML-KEM-1024 are supported by all backends.",
+		Entries: []ugEntry{
+			{
+				Kind:      "func",
+				Name:      "GenerateKey768",
+				Signature: "func mlkem.GenerateKey768() (*mlkem.DecapsulationKey768, error)",
+				Doc:       "GenerateKey768 generates a new ML-KEM-768 decapsulation key. The corresponding encapsulation key is obtained with the `EncapsulationKey` method.",
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("The key is a wrapper around an [EVP_PKEY] generated using [EVP_PKEY_keygen] with the `ML-KEM-768` key type."),
+						cng("The key is generated using [BCryptGenerateKeyPair] with the `BCRYPT_MLKEM_ALGORITHM` [algorithm identifier] and the `768` parameter set name set via the `BCRYPT_PARAMETER_SET_NAME` property."),
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "GenerateKey1024",
+				Signature: "func mlkem.GenerateKey1024() (*mlkem.DecapsulationKey1024, error)",
+				Doc: "GenerateKey1024 generates a new ML-KEM-1024 decapsulation key. It behaves as [mlkem.GenerateKey768](#func-generatekey768) but uses the `ML-KEM-1024` key type (OpenSSL) or the `1024` parameter set name (CNG).\n" +
+					"\n" +
+					"Decapsulation keys can also be reconstructed from a seed using `mlkem.NewDecapsulationKey768` and `mlkem.NewDecapsulationKey1024`, and encapsulation keys can be decoded with `mlkem.NewEncapsulationKey768` and `mlkem.NewEncapsulationKey1024`.",
+			},
+			{
+				Kind:      "func",
+				Name:      "EncapsulationKey768.Encapsulate",
+				Signature: "func (ek *mlkem.EncapsulationKey768) Encapsulate() (sharedKey, ciphertext []byte)",
+				Doc:       "Encapsulate generates a shared key and an associated ciphertext from the encapsulation key. The same shared key is recovered by the holder of the decapsulation key via [mlkem.DecapsulationKey768.Decapsulate](#func-decapsulationkey768decapsulate). The shared key must be kept secret.",
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("The shared key and ciphertext are generated using [EVP_PKEY_encapsulate]."),
+						cng("The shared key and ciphertext are generated using the CNG ML-KEM encapsulation operation."),
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "DecapsulationKey768.Decapsulate",
+				Signature: "func (dk *mlkem.DecapsulationKey768) Decapsulate(ciphertext []byte) (sharedKey []byte, err error)",
+				Doc:       "Decapsulate recovers the shared key from `ciphertext` using the decapsulation key. The ML-KEM-1024 keys expose analogous `Encapsulate` and `Decapsulate` methods.",
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("The shared key is recovered using [EVP_PKEY_decapsulate]."),
+						cng("The shared key is recovered using the CNG ML-KEM decapsulation operation."),
+					},
+				},
+			},
+		},
+	},
+	{
+		Import: "crypto/pbkdf2",
+		Doc:    "Package pbkdf2 implements the key derivation function PBKDF2 as defined in RFC 8018 (PKCS #5 v2.1).",
+		Entries: []ugEntry{
+			{
+				Kind:      "func",
+				Name:      "Key",
+				Signature: "func pbkdf2.Key[H hash.Hash](h func() H, password string, salt []byte, iter, keyLength int) ([]byte, error)",
+				Doc:       "Key derives a key of `keyLength` bytes from `password` and `salt` by applying the pseudorandom function `iter` times.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"`h` must return a hash supported by the crypto backend.",
+					},
+				},
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("On OpenSSL 1.x the key is derived using [PKCS5_PBKDF2_HMAC].\n" +
+							"On OpenSSL 3.x the key is derived using [EVP_KDF_derive] with the `PBKDF2` KDF."),
+						cng("The key is derived using [BCryptKeyDerivation] with the `BCRYPT_PBKDF2_ALGORITHM` [algorithm identifier], setting the iteration count, hash algorithm, and salt through key derivation parameters."),
+					},
+				},
 			},
 		},
 	},
@@ -1007,6 +1136,109 @@ var userGuideContent = []ugPackage{
 			},
 			notImplementedFunc("sha512.Sum512_224"),
 			notImplementedFunc("sha512.Sum512_256"),
+		},
+	},
+	{
+		Import: "crypto/sha3",
+		Doc: "Package sha3 implements the SHA-3 hash functions and the SHAKE and cSHAKE extendable-output functions (XOFs) as defined in FIPS 202.\n" +
+			"\n" +
+			"The `sha3.Sum224`, `sha3.Sum256`, `sha3.Sum384`, and `sha3.Sum512` one-shot helpers internally use the corresponding `New*` constructor, and `sha3.SumSHAKE128` and `sha3.SumSHAKE256` internally use the corresponding SHAKE constructor.",
+		Entries: []ugEntry{
+			{
+				Kind:      "func",
+				Name:      "New224",
+				Signature: "func sha3.New224() *sha3.SHA3",
+				Doc:       "New224 returns a new hash.Hash computing the SHA3-224 checksum.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"The CNG backend does not implement this function.",
+					},
+				},
+				Impl: hashImpl("EVP_sha3_224", ""),
+			},
+			{
+				Kind:      "func",
+				Name:      "New256",
+				Signature: "func sha3.New256() *sha3.SHA3",
+				Doc:       "New256 returns a new hash.Hash computing the SHA3-256 checksum.",
+				Impl:      hashImpl("EVP_sha3_256", "BCRYPT_SHA3_256_ALGORITHM"),
+			},
+			{
+				Kind:      "func",
+				Name:      "New384",
+				Signature: "func sha3.New384() *sha3.SHA3",
+				Doc: "New384 returns a new hash.Hash computing the SHA3-384 checksum.\n" +
+					"It is implemented as [sha3.New256](#func-new256) but with the `EVP_sha3_384` algorithm (OpenSSL) or the `BCRYPT_SHA3_384_ALGORITHM` [algorithm identifier] (CNG).",
+			},
+			{
+				Kind:      "func",
+				Name:      "New512",
+				Signature: "func sha3.New512() *sha3.SHA3",
+				Doc: "New512 returns a new hash.Hash computing the SHA3-512 checksum.\n" +
+					"It is implemented as [sha3.New256](#func-new256) but with the `EVP_sha3_512` algorithm (OpenSSL) or the `BCRYPT_SHA3_512_ALGORITHM` [algorithm identifier] (CNG).",
+			},
+			{
+				Kind:      "func",
+				Name:      "NewSHAKE128",
+				Signature: "func sha3.NewSHAKE128() *sha3.SHAKE",
+				Doc:       "NewSHAKE128 returns a new SHAKE128 XOF.",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"The OpenSSL backend requires OpenSSL 3.3 or higher.",
+					},
+				},
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						openssl("The XOF is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the SHAKE128 algorithm.\n" +
+							"\n" +
+							"The XOF methods are implemented as follows:\n" +
+							"\n" +
+							"- `Write` using [EVP_DigestUpdate].\n" +
+							"- `Read` using [EVP_DigestSqueeze]."),
+						cng("The XOF is generated using [BCryptCreateHash] with the `BCRYPT_CSHAKE128_ALGORITHM` [algorithm identifier].\n" +
+							"\n" +
+							"The XOF methods are implemented as follows:\n" +
+							"\n" +
+							"- `Write` using [BCryptHashData].\n" +
+							"- `Read` using [BCryptFinishHash]."),
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "NewSHAKE256",
+				Signature: "func sha3.NewSHAKE256() *sha3.SHAKE",
+				Doc: "NewSHAKE256 returns a new SHAKE256 XOF.\n" +
+					"It is implemented as [sha3.NewSHAKE128](#func-newshake128) but with the SHAKE256 algorithm (OpenSSL) or the `BCRYPT_CSHAKE256_ALGORITHM` [algorithm identifier] (CNG). It is subject to the same requirements.",
+			},
+			{
+				Kind:      "func",
+				Name:      "NewCSHAKE128",
+				Signature: "func sha3.NewCSHAKE128(N, S []byte) *sha3.SHAKE",
+				Doc:       "NewCSHAKE128 returns a new cSHAKE128 XOF, customized with the function-name string `N` and the customization string `S`. When both `N` and `S` are empty it is equivalent to [sha3.NewSHAKE128](#func-newshake128).",
+				Requirements: &ugRequirements{
+					Items: []string{
+						"The OpenSSL backend does not implement this function.",
+					},
+				},
+				Impl: &ugImpl{
+					Backends: []ugBackend{
+						cng("The XOF is generated using [BCryptCreateHash] with the `BCRYPT_CSHAKE128_ALGORITHM` [algorithm identifier]. The function-name string `N` and the customization string `S` are set with the `BCRYPT_FUNCTION_NAME_STRING` and `BCRYPT_CUSTOMIZATION_STRING` properties.\n" +
+							"\n" +
+							"The XOF methods are implemented as follows:\n" +
+							"\n" +
+							"- `Write` using [BCryptHashData].\n" +
+							"- `Read` using [BCryptFinishHash]."),
+					},
+				},
+			},
+			{
+				Kind:      "func",
+				Name:      "NewCSHAKE256",
+				Signature: "func sha3.NewCSHAKE256(N, S []byte) *sha3.SHAKE",
+				Doc: "NewCSHAKE256 returns a new cSHAKE256 XOF.\n" +
+					"It is implemented as [sha3.NewCSHAKE128](#func-newcshake128) but with the `BCRYPT_CSHAKE256_ALGORITHM` [algorithm identifier], and is subject to the same requirements.",
+			},
 		},
 	},
 	{
@@ -1251,23 +1483,35 @@ var userGuideContent = []ugPackage{
 			"Since Go 1.22, the Microsoft build of Go runtime automatically enforces that tls only uses FIPS-approved settings when running in FIPS mode.\n" +
 			"Prior to Go 1.22, a program using tls must import the `crypto/tls/fipsonly` package to be compliant with these restrictions.\n" +
 			"\n" +
+			"Since Go 1.26, the Microsoft build of Go applies a set of Microsoft-recommended TLS defaults (for example, preferring AES-256 over AES-128 and enabling ML-KEM-based key exchange groups). This is controlled by the `ms_tlsprofile` GODEBUG setting, which defaults to `ms_tlsprofile=default` and can be set to `ms_tlsprofile=off` to restore the upstream Go defaults. The `ms_tlsx25519` GODEBUG setting (default `ms_tlsx25519=1`) controls whether the X25519 and X25519MLKEM768 groups are enabled by default. These settings affect the default selection only; the FIPS-only restrictions below are always enforced in FIPS mode.\n" +
+			"\n" +
 			"When using TLS in FIPS-only mode the TLS handshake has the following restrictions:\n" +
 			"\n" +
 			"- TLS versions:\n" +
 			"  - `tls.VersionTLS12`\n" +
 			"  - `tls.VersionTLS13`\n" +
-			"- ECDSA elliptic curves:\n" +
+			"- Key exchange groups:\n" +
 			"  - `tls.CurveP256`\n" +
 			"  - `tls.CurveP384`\n" +
 			"  - `tls.CurveP521`\n" +
+			"  - `tls.X25519MLKEM768`\n" +
+			"  - `tls.SecP256r1MLKEM768`\n" +
+			"  - `tls.SecP384r1MLKEM1024`\n" +
+			"  - `tls.MLKEM1024`\n" +
+			"\n" +
+			"  The standalone `tls.X25519` group is not used in FIPS mode; only the ML-KEM-based hybrid and pure groups above (whose security relies on the FIPS-approved ML-KEM component) and the NIST curves are used. The ML-KEM groups are only offered when supported by the crypto backend.\n" +
 			"- Cipher suites for TLS 1.2:\n" +
-			"  - `tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`\n" +
 			"  - `tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`\n" +
-			"  - `tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`\n" +
+			"  - `tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`\n" +
 			"  - `tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384`\n" +
+			"  - `tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`\n" +
+			"  - `tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256`\n" +
+			"  - `tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256`\n" +
 			"- Cipher suites for TLS 1.3:\n" +
-			"  - `tls.TLS_AES_128_GCM_SHA256`\n" +
 			"  - `tls.TLS_AES_256_GCM_SHA384`\n" +
+			"  - `tls.TLS_AES_128_GCM_SHA256`\n" +
+			"\n" +
+			"  The ChaCha20-Poly1305 cipher suites (such as `tls.TLS_CHACHA20_POLY1305_SHA256`) are offered by default outside FIPS mode but are not permitted in FIPS-only mode, as ChaCha20-Poly1305 is not a FIPS-approved algorithm.\n" +
 			"- x509 certificate public key:\n" +
 			"  - `rsa.PublicKey` with a bit length of 2048 or 3072. Bit length of 4096 is still not supported, see [this issue](https://github.com/golang/go/issues/41147) for more info.\n" +
 			"  - `ecdsa.PublicKey`  with a supported elliptic curve.\n" +
@@ -1337,6 +1581,15 @@ var userGuideLinkGroups = [][]ugLink{
 		{Name: "EVP_sha256", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha256.html"},
 		{Name: "EVP_sha384", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha384.html"},
 		{Name: "EVP_sha512", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha512.html"},
+		{Name: "EVP_sha3_224", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha3_224.html"},
+		{Name: "EVP_sha3_256", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha3_256.html"},
+		{Name: "EVP_sha3_384", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha3_384.html"},
+		{Name: "EVP_sha3_512", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_sha3_512.html"},
+		{Name: "EVP_DigestSqueeze", URL: "https://www.openssl.org/docs/man3.3/man3/EVP_DigestSqueeze.html"},
+		{Name: "EVP_PKEY_encapsulate", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_PKEY_encapsulate.html"},
+		{Name: "EVP_PKEY_decapsulate", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_PKEY_decapsulate.html"},
+		{Name: "EVP_KDF_derive", URL: "https://www.openssl.org/docs/man3.0/man3/EVP_KDF_derive.html"},
+		{Name: "PKCS5_PBKDF2_HMAC", URL: "https://www.openssl.org/docs/man3.0/man3/PKCS5_PBKDF2_HMAC.html"},
 		{Name: "HMAC_CTX_new", URL: "https://www.openssl.org/docs/man3.0/man3/HMAC_CTX_new.html"},
 		{Name: "HMAC_Init_ex", URL: "https://www.openssl.org/docs/man3.0/man3/HMAC_Init_ex.html"},
 		{Name: "HMAC_Update", URL: "https://www.openssl.org/docs/man3.0/man3/HMAC_Update.html"},
@@ -1365,6 +1618,7 @@ var userGuideLinkGroups = [][]ugLink{
 		{Name: "BCryptHashData", URL: "https://docs.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcrypthashdata"},
 		{Name: "BCryptFinishHash", URL: "https://docs.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptfinishhash"},
 		{Name: "BCryptDestroyHash", URL: "https://docs.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptdestroyhash"},
+		{Name: "BCryptKeyDerivation", URL: "https://docs.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptkeyderivation"},
 		{Name: "BCRYPT_OAEP_PADDING_INFO", URL: "https://docs.microsoft.com/en-us/windows/win32/api/Bcrypt/ns-bcrypt-bcrypt_oaep_padding_info"},
 		{Name: "BCRYPT_PKCS1_PADDING_INFO", URL: "https://docs.microsoft.com/en-us/windows/win32/api/Bcrypt/ns-bcrypt-bcrypt_pkcs1_padding_info"},
 		{Name: "BCRYPT_PSS_PADDING_INFO", URL: "https://docs.microsoft.com/en-us/windows/win32/api/Bcrypt/ns-bcrypt-bcrypt_pss_padding_info"},
