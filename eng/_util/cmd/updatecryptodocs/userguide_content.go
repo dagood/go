@@ -4,11 +4,65 @@
 
 package main
 
+import "strings"
+
 // This file is the structured source of truth for the per-package, per-API
 // content of the FIPS User Guide (eng/doc/fips/UserGuide.md). The generator in
 // userguide.go renders all Markdown scaffolding (headings, anchors, code
 // fences, requirement lists, and <details> implementation blocks) from these
 // structures. Edit the data here rather than the generated Markdown.
+
+// hashImpl builds the streaming-digest "Implementation" section shared by the
+// md5, sha1, sha256, and sha512 constructors, which differ only by the
+// underlying algorithm. evpMD is the OpenSSL message-digest link name (e.g.
+// "EVP_sha256") and bcryptAlg is the CNG [algorithm identifier] (e.g.
+// "BCRYPT_SHA256_ALGORITHM"). When bcryptAlg is empty the CNG backend is
+// omitted, as CNG does not implement SHA-224.
+func hashImpl(evpMD, bcryptAlg string) *ugImpl {
+	backends := []ugBackend{
+		openssl("The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [" + evpMD + "].\n" +
+			"\n" +
+			"The hash.Hash methods are implemented as follows:\n" +
+			"\n" +
+			"- `Write` using [EVP_DigestUpdate].\n" +
+			"- `Sum` using [EVP_DigestFinal].\n" +
+			"- `Reset` using [EVP_DigestInit]."),
+	}
+	if bcryptAlg != "" {
+		backends = append(backends, cng("The hash is generated using [BCryptCreateHash] with the [algorithm identifier] `"+bcryptAlg+"`.\n"+
+			"\n"+
+			"The hash.Hash methods are implemented as follows:\n"+
+			"\n"+
+			"- `Write` using [BCryptHashData].\n"+
+			"- `Sum` using [BCryptFinishHash].\n"+
+			"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash]."))
+	}
+	return &ugImpl{Backends: backends}
+}
+
+// sumDoc builds the documentation for the one-shot `Sum*` digest helpers, which
+// all delegate to a streaming constructor. fn is the function name (e.g.
+// "Sum256"), label is the checksum name shown in the prose (e.g. "SHA256"), and
+// newFn is the constructor it delegates to (e.g. "sha256.New()").
+func sumDoc(fn, label, newFn string) string {
+	return fn + " returns the " + label + " checksum of the data.\n" +
+		"It internally uses " + newFn + " to compute the checksum."
+}
+
+// notImplementedFunc builds a func entry for an API that no backend implements.
+// qualified is the package-qualified name shown in the prose (e.g.
+// "cipher.NewOFB"); the heading name is derived from the part after the dot.
+func notImplementedFunc(qualified string) ugEntry {
+	name := qualified
+	if i := strings.LastIndex(qualified, "."); i >= 0 {
+		name = qualified[i+1:]
+	}
+	return ugEntry{
+		Kind: "func",
+		Name: name,
+		Doc:  qualified + " is not implemented by any backend.",
+	}
+}
 
 // userGuideContent holds the User Guide package sections, in the order they are
 // rendered. The set and ordering of packages is validated against the shared
@@ -31,30 +85,24 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`cipher` implements the cipher.Block interface using a cipher function that depends on the `key` length:\n" +
-								"\n" +
-								"- If `len(key) == 16` uses [EVP_aes_128_ecb].\n" +
-								"- If `len(key) == 24` uses [EVP_aes_192_ecb].\n" +
-								"- If `len(key) == 32` uses [EVP_aes_256_ecb].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns `16`.\n" +
-								"- `Encrypt` uses [EVP_EncryptUpdate].\n" +
-								"- `Decrypt` uses [EVP_DecryptUpdate].",
-						},
-						{
-							Name: "CNG",
-							Body: "`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_AES_ALGORITHM` with `BCRYPT_CHAIN_MODE_ECB` mode, generated using [BCryptGenerateSymmetricKey].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns `16`.\n" +
-								"- `Encrypt` uses [BCryptEncrypt].\n" +
-								"- `Decrypt` uses [BCryptDecrypt].",
-						},
+						openssl("`cipher` implements the cipher.Block interface using a cipher function that depends on the `key` length:\n" +
+							"\n" +
+							"- If `len(key) == 16` uses [EVP_aes_128_ecb].\n" +
+							"- If `len(key) == 24` uses [EVP_aes_192_ecb].\n" +
+							"- If `len(key) == 32` uses [EVP_aes_256_ecb].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns `16`.\n" +
+							"- `Encrypt` uses [EVP_EncryptUpdate].\n" +
+							"- `Decrypt` uses [EVP_DecryptUpdate]."),
+						cng("`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_AES_ALGORITHM` with `BCRYPT_CHAIN_MODE_ECB` mode, generated using [BCryptGenerateSymmetricKey].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns `16`.\n" +
+							"- `Encrypt` uses [BCryptEncrypt].\n" +
+							"- `Decrypt` uses [BCryptDecrypt]."),
 					},
 				},
 			},
@@ -76,29 +124,23 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`cipher` implements the cipher.AEAD interface using a cipher function that depends on the key length of cipher:\n" +
-								"\n" +
-								"- `NonceSize` always returns `12`.\n" +
-								"- `Overhead` always returns `16`.\n" +
-								"- The cipher used in `Seal` and `Open` depends on the key length used in `aes.NewCipher(key []byte)`:\n" +
-								"  - If `len(key) == 16` uses [EVP_aes_128_gcm].\n" +
-								"  - If `len(key) == 24` uses [EVP_aes_192_gcm].\n" +
-								"  - If `len(key) == 32` uses [EVP_aes_256_gcm].\n" +
-								"- `Seal` uses [EVP_EncryptUpdate] for the encryption and [EVP_EncryptFinal_ex] for authenticating.\n" +
-								"- `Open` uses [EVP_DecryptUpdate] for the decryption and [EVP_DecryptFinal_ex] for authenticating.",
-						},
-						{
-							Name: "CNG",
-							Body: "`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_AES_ALGORITHM` with `BCRYPT_CHAIN_MODE_GCM` mode, generated using [BCryptGenerateSymmetricKey].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"- `NonceSize` always returns `12`.\n" +
-								"- `Overhead` always returns `16`.\n" +
-								"- `Encrypt` uses [BCryptEncrypt].\n" +
-								"- `Decrypt` uses [BCryptDecrypt].",
-						},
+						openssl("`cipher` implements the cipher.AEAD interface using a cipher function that depends on the key length of cipher:\n" +
+							"\n" +
+							"- `NonceSize` always returns `12`.\n" +
+							"- `Overhead` always returns `16`.\n" +
+							"- The cipher used in `Seal` and `Open` depends on the key length used in `aes.NewCipher(key []byte)`:\n" +
+							"  - If `len(key) == 16` uses [EVP_aes_128_gcm].\n" +
+							"  - If `len(key) == 24` uses [EVP_aes_192_gcm].\n" +
+							"  - If `len(key) == 32` uses [EVP_aes_256_gcm].\n" +
+							"- `Seal` uses [EVP_EncryptUpdate] for the encryption and [EVP_EncryptFinal_ex] for authenticating.\n" +
+							"- `Open` uses [EVP_DecryptUpdate] for the decryption and [EVP_DecryptFinal_ex] for authenticating."),
+						cng("`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_AES_ALGORITHM` with `BCRYPT_CHAIN_MODE_GCM` mode, generated using [BCryptGenerateSymmetricKey].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"- `NonceSize` always returns `12`.\n" +
+							"- `Overhead` always returns `16`.\n" +
+							"- `Encrypt` uses [BCryptEncrypt].\n" +
+							"- `Decrypt` uses [BCryptDecrypt]."),
 					},
 				},
 			},
@@ -152,33 +194,27 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`cbc` implements the cipher.BlockMode interface using a cipher that depends on the `block` key length:\n" +
-								"\n" +
-								"- For `aes.NewCipher`:\n" +
-								"  - If `len(key) == 16` then the cipher used is [EVP_aes_128_cbc].\n" +
-								"  - If `len(key) == 24` then the cipher used is [EVP_aes_192_cbc].\n" +
-								"  - If `len(key) == 32` then the cipher used is [EVP_aes_256_cbc].\n" +
-								"- For `des.NewCipher`, the cipher used is [EVP_des_cbc].\n" +
-								"- For `des.NewTripleDESCipher`, the cipher used is [EVP_des_ede3_cbc].\n" +
-								"\n" +
-								"In all cases the cipher will have the padding disabled using [EVP_CIPHER_CTX_set_padding].\n" +
-								"\n" +
-								"The cipher.BlockMode methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns the underlying cipher block size.\n" +
-								"- `CryptBlocks` uses [EVP_DecryptUpdate].",
-						},
-						{
-							Name: "CNG",
-							Body: "`cipher` implements the cipher.Block interface using the underlying cipher [algorithm identifier]  with `BCRYPT_CHAIN_MODE_CBC` mode, generated using [BCryptGenerateSymmetricKey].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns the underlying cipher block size.\n" +
-								"- `CryptBlocks` uses [BCryptDecrypt].",
-						},
+						openssl("`cbc` implements the cipher.BlockMode interface using a cipher that depends on the `block` key length:\n" +
+							"\n" +
+							"- For `aes.NewCipher`:\n" +
+							"  - If `len(key) == 16` then the cipher used is [EVP_aes_128_cbc].\n" +
+							"  - If `len(key) == 24` then the cipher used is [EVP_aes_192_cbc].\n" +
+							"  - If `len(key) == 32` then the cipher used is [EVP_aes_256_cbc].\n" +
+							"- For `des.NewCipher`, the cipher used is [EVP_des_cbc].\n" +
+							"- For `des.NewTripleDESCipher`, the cipher used is [EVP_des_ede3_cbc].\n" +
+							"\n" +
+							"In all cases the cipher will have the padding disabled using [EVP_CIPHER_CTX_set_padding].\n" +
+							"\n" +
+							"The cipher.BlockMode methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns the underlying cipher block size.\n" +
+							"- `CryptBlocks` uses [EVP_DecryptUpdate]."),
+						cng("`cipher` implements the cipher.Block interface using the underlying cipher [algorithm identifier]  with `BCRYPT_CHAIN_MODE_CBC` mode, generated using [BCryptGenerateSymmetricKey].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns the underlying cipher block size.\n" +
+							"- `CryptBlocks` uses [BCryptDecrypt]."),
 					},
 				},
 			},
@@ -194,44 +230,30 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`cbc` implements the cipher.BlockMode interface using a cipher that depends on the `block` key length:\n" +
-								"\n" +
-								"- For `aes.NewCipher`:\n" +
-								"  - If `len(key) == 16` then the cipher used is [EVP_aes_128_cbc].\n" +
-								"  - If `len(key) == 24` then the cipher used is [EVP_aes_192_cbc].\n" +
-								"  - If `len(key) == 32` then the cipher used is [EVP_aes_256_cbc].\n" +
-								"- For `des.NewCipher`, the cipher used is [EVP_des_cbc].\n" +
-								"- For `des.NewTripleDESCipher`, the cipher used is [EVP_des_ede3_cbc].\n" +
-								"\n" +
-								"The cipher.BlockMode methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns the underlying cipher block size.\n" +
-								"- `CryptBlocks` uses [EVP_EncryptUpdate].",
-						},
-						{
-							Name: "CNG",
-							Body: "`cipher` implements the cipher.Block interface using the underlying cipher [algorithm identifier]  with `BCRYPT_CHAIN_MODE_CBC` mode, generated using [BCryptGenerateSymmetricKey].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns the underlying cipher block size.\n" +
-								"- `CryptBlocks` uses [BCryptEncrypt].",
-						},
+						openssl("`cbc` implements the cipher.BlockMode interface using a cipher that depends on the `block` key length:\n" +
+							"\n" +
+							"- For `aes.NewCipher`:\n" +
+							"  - If `len(key) == 16` then the cipher used is [EVP_aes_128_cbc].\n" +
+							"  - If `len(key) == 24` then the cipher used is [EVP_aes_192_cbc].\n" +
+							"  - If `len(key) == 32` then the cipher used is [EVP_aes_256_cbc].\n" +
+							"- For `des.NewCipher`, the cipher used is [EVP_des_cbc].\n" +
+							"- For `des.NewTripleDESCipher`, the cipher used is [EVP_des_ede3_cbc].\n" +
+							"\n" +
+							"The cipher.BlockMode methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns the underlying cipher block size.\n" +
+							"- `CryptBlocks` uses [EVP_EncryptUpdate]."),
+						cng("`cipher` implements the cipher.Block interface using the underlying cipher [algorithm identifier]  with `BCRYPT_CHAIN_MODE_CBC` mode, generated using [BCryptGenerateSymmetricKey].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns the underlying cipher block size.\n" +
+							"- `CryptBlocks` uses [BCryptEncrypt]."),
 					},
 				},
 			},
-			{
-				Kind: "func",
-				Name: "NewCFBDecrypter",
-				Doc:  "cipher.NewCFBDecrypter is not implemented by any backend.",
-			},
-			{
-				Kind: "func",
-				Name: "NewCFBEncrypter",
-				Doc:  "cipher.NewCFBEncrypter is not implemented by any backend.",
-			},
+			notImplementedFunc("cipher.NewCFBDecrypter"),
+			notImplementedFunc("cipher.NewCFBEncrypter"),
 			{
 				Kind:      "func",
 				Name:      "NewCTR",
@@ -245,25 +267,18 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`ctr` implements the cipher.Stream interface using a cipher that depends on the `block` key length:\n" +
-								"\n" +
-								"- If `len(key) == 16` then the cipher used is [EVP_aes_128_ctr].\n" +
-								"- If `len(key) == 24` then the cipher used is [EVP_aes_192_ctr].\n" +
-								"- If `len(key) == 32` then the cipher used is [EVP_aes_256_ctr].\n" +
-								"\n" +
-								"The cipher.Stream methods are implemented as follows:\n" +
-								"- `XORKeyStream(dst, src []byte)` XORs each byte in the given slice using [EVP_EncryptUpdate].",
-						},
+						openssl("`ctr` implements the cipher.Stream interface using a cipher that depends on the `block` key length:\n" +
+							"\n" +
+							"- If `len(key) == 16` then the cipher used is [EVP_aes_128_ctr].\n" +
+							"- If `len(key) == 24` then the cipher used is [EVP_aes_192_ctr].\n" +
+							"- If `len(key) == 32` then the cipher used is [EVP_aes_256_ctr].\n" +
+							"\n" +
+							"The cipher.Stream methods are implemented as follows:\n" +
+							"- `XORKeyStream(dst, src []byte)` XORs each byte in the given slice using [EVP_EncryptUpdate]."),
 					},
 				},
 			},
-			{
-				Kind: "func",
-				Name: "NewOFB",
-				Doc:  "cipher.NewOFB is not implemented by any backend.",
-			},
+			notImplementedFunc("cipher.NewOFB"),
 			{
 				Kind:      "func",
 				Name:      "StreamReader.Read",
@@ -313,26 +328,20 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`cipher` implements the cipher.Block interface using the [EVP_des_128_ecb] cipher function.\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns `8`.\n" +
-								"- `Encrypt` uses [EVP_EncryptUpdate].\n" +
-								"- `Decrypt` uses [EVP_DecryptUpdate].",
-						},
-						{
-							Name: "CNG",
-							Body: "`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_DES_ALGORITHM` with `BCRYPT_CHAIN_MODE_ECB` mode, generated using [BCryptGenerateSymmetricKey].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns `8`.\n" +
-								"- `Encrypt` uses [BCryptEncrypt].\n" +
-								"- `Decrypt` uses [BCryptDecrypt].",
-						},
+						openssl("`cipher` implements the cipher.Block interface using the [EVP_des_128_ecb] cipher function.\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns `8`.\n" +
+							"- `Encrypt` uses [EVP_EncryptUpdate].\n" +
+							"- `Decrypt` uses [EVP_DecryptUpdate]."),
+						cng("`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_DES_ALGORITHM` with `BCRYPT_CHAIN_MODE_ECB` mode, generated using [BCryptGenerateSymmetricKey].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns `8`.\n" +
+							"- `Encrypt` uses [BCryptEncrypt].\n" +
+							"- `Decrypt` uses [BCryptDecrypt]."),
 					},
 				},
 			},
@@ -348,26 +357,20 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`cipher` implements the cipher.Block interface using the [EVP_des_ede3_ecb] cipher function.\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns `8`.\n" +
-								"- `Encrypt` uses [EVP_EncryptUpdate].\n" +
-								"- `Decrypt` uses [EVP_DecryptUpdate].",
-						},
-						{
-							Name: "CNG",
-							Body: "`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_DES3_ALGORITHM` with `BCRYPT_CHAIN_MODE_ECB` mode, generated using [BCryptGenerateSymmetricKey].\n" +
-								"\n" +
-								"The cipher.Block methods are implemented as follows:\n" +
-								"\n" +
-								"- `BlockSize` always returns `8`.\n" +
-								"- `Encrypt` uses [BCryptEncrypt].\n" +
-								"- `Decrypt` uses [BCryptDecrypt].",
-						},
+						openssl("`cipher` implements the cipher.Block interface using the [EVP_des_ede3_ecb] cipher function.\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns `8`.\n" +
+							"- `Encrypt` uses [EVP_EncryptUpdate].\n" +
+							"- `Decrypt` uses [EVP_DecryptUpdate]."),
+						cng("`cipher` implements the cipher.Block interface using the [algorithm identifier] `BCRYPT_DES3_ALGORITHM` with `BCRYPT_CHAIN_MODE_ECB` mode, generated using [BCryptGenerateSymmetricKey].\n" +
+							"\n" +
+							"The cipher.Block methods are implemented as follows:\n" +
+							"\n" +
+							"- `BlockSize` always returns `8`.\n" +
+							"- `Encrypt` uses [BCryptEncrypt].\n" +
+							"- `Decrypt` uses [BCryptDecrypt]."),
 					},
 				},
 			},
@@ -383,18 +386,12 @@ var userGuideContent = []ugPackage{
 		Impl: &ugImpl{
 			Text: "All supported curves implement the `ecdh.Curve` interface as follows:",
 			Backends: []ugBackend{
-				{
-					Name: "OpenSSL",
-					Body: " - `GenerateKey` uses [EVP_PKEY_keygen].\n" +
-						" - `NewPrivateKey` uses [EVP_PKEY_new].\n" +
-						" - `NewPublicKey` uses [EVP_PKEY_new].",
-				},
-				{
-					Name: "CNG",
-					Body: " - `GenerateKey` uses [BCryptGenerateKeyPair] and [BCryptExportKey].\n" +
-						" - `NewPrivateKey` uses [BCryptImportKeyPair].\n" +
-						" - `NewPublicKey` uses [BCryptImportKeyPair].",
-				},
+				openssl(" - `GenerateKey` uses [EVP_PKEY_keygen].\n" +
+					" - `NewPrivateKey` uses [EVP_PKEY_new].\n" +
+					" - `NewPublicKey` uses [EVP_PKEY_new]."),
+				cng(" - `GenerateKey` uses [BCryptGenerateKeyPair] and [BCryptExportKey].\n" +
+					" - `NewPrivateKey` uses [BCryptImportKeyPair].\n" +
+					" - `NewPublicKey` uses [BCryptImportKeyPair]."),
 			},
 		},
 		Entries: []ugEntry{
@@ -405,14 +402,8 @@ var userGuideContent = []ugPackage{
 				Doc:       "P256 returns a Curve which implements NIST P-256.",
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The curve uses `NID_X9_62_prime256v1`.",
-						},
-						{
-							Name: "CNG",
-							Body: "The curve uses `BCRYPT_ECC_CURVE_NISTP256`.",
-						},
+						openssl("The curve uses `NID_X9_62_prime256v1`."),
+						cng("The curve uses `BCRYPT_ECC_CURVE_NISTP256`."),
 					},
 				},
 			},
@@ -423,14 +414,8 @@ var userGuideContent = []ugPackage{
 				Doc:       "P384 returns a Curve which implements NIST P-384.",
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The curve uses `NID_secp384r1`.",
-						},
-						{
-							Name: "CNG",
-							Body: "The curve uses `BCRYPT_ECC_CURVE_NISTP384`.",
-						},
+						openssl("The curve uses `NID_secp384r1`."),
+						cng("The curve uses `BCRYPT_ECC_CURVE_NISTP384`."),
 					},
 				},
 			},
@@ -441,22 +426,12 @@ var userGuideContent = []ugPackage{
 				Doc:       "P521 returns a Curve which implements NIST P-521.",
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The curve uses `NID_secp521r1`.",
-						},
-						{
-							Name: "CNG",
-							Body: "The curve uses `BCRYPT_ECC_CURVE_NISTP521`.",
-						},
+						openssl("The curve uses `NID_secp521r1`."),
+						cng("The curve uses `BCRYPT_ECC_CURVE_NISTP521`."),
 					},
 				},
 			},
-			{
-				Kind: "func",
-				Name: "X25519",
-				Doc:  "ecdh.X25519 is not implemented by any backend.",
-			},
+			notImplementedFunc("ecdh.X25519"),
 			{
 				Kind:      "func",
 				Name:      "PrivateKey.ECDH",
@@ -469,14 +444,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The key is derived using [EVP_PKEY_derive].",
-						},
-						{
-							Name: "CNG",
-							Body: "The key is derived using [BCryptDeriveKey].",
-						},
+						openssl("The key is derived using [EVP_PKEY_derive]."),
+						cng("The key is derived using [BCryptDeriveKey]."),
 					},
 				},
 			},
@@ -499,14 +468,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`r` and `s` are generated using [EVP_PKEY_sign].",
-						},
-						{
-							Name: "CNG",
-							Body: "`r` and `s` are generated using [BCryptSignHash].",
-						},
+						openssl("`r` and `s` are generated using [EVP_PKEY_sign]."),
+						cng("`r` and `s` are generated using [BCryptSignHash]."),
 					},
 				},
 			},
@@ -526,14 +489,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The signature is verified using [EVP_PKEY_verify].",
-						},
-						{
-							Name: "CNG",
-							Body: "The signature is verified using [BCryptVerifySignature].",
-						},
+						openssl("The signature is verified using [EVP_PKEY_verify]."),
+						cng("The signature is verified using [BCryptVerifySignature]."),
 					},
 				},
 			},
@@ -557,28 +514,22 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`priv` is a wrapper around an [EVP_PKEY] generated using [EVP_PKEY_keygen].\n" +
-								"\n" +
-								"`priv` curve algorithm depends on the value of `c`:\n" +
-								"\n" +
-								"- If `c.Params().Name == \"P-224\"` then curve is `NID_secp224r1`.\n" +
-								"- If `c.Params().Name == \"P-256\"` then curve is `NID_X9_62_prime256v1`.\n" +
-								"- If `c.Params().Name == \"P-384\"` then curve is `NID_secp384r1`.\n" +
-								"- If `c.Params().Name == \"P-521\"` then curve is `NID_secp521r1`.",
-						},
-						{
-							Name: "CNG",
-							Body: "`priv` is generated using [BCryptGenerateKeyPair].\n" +
-								"\n" +
-								"`priv` [algorithm identifier] is `BCRYPT_ECDSA_ALGORITHM` and the [named elliptic curve] depends on the value of `c`:\n" +
-								"\n" +
-								"- If `c.Params().Name == \"P-224\"` then curve is `BCRYPT_ECC_CURVE_NISTP224`.\n" +
-								"- If `c.Params().Name == \"P-256\"` then curve is `BCRYPT_ECC_CURVE_NISTP256`.\n" +
-								"- If `c.Params().Name == \"P-384\"` then curve is `BCRYPT_ECC_CURVE_NISTP384`.\n" +
-								"- If `c.Params().Name == \"P-521\"` then curve is `BCRYPT_ECC_CURVE_NISTP521`.",
-						},
+						openssl("`priv` is a wrapper around an [EVP_PKEY] generated using [EVP_PKEY_keygen].\n" +
+							"\n" +
+							"`priv` curve algorithm depends on the value of `c`:\n" +
+							"\n" +
+							"- If `c.Params().Name == \"P-224\"` then curve is `NID_secp224r1`.\n" +
+							"- If `c.Params().Name == \"P-256\"` then curve is `NID_X9_62_prime256v1`.\n" +
+							"- If `c.Params().Name == \"P-384\"` then curve is `NID_secp384r1`.\n" +
+							"- If `c.Params().Name == \"P-521\"` then curve is `NID_secp521r1`."),
+						cng("`priv` is generated using [BCryptGenerateKeyPair].\n" +
+							"\n" +
+							"`priv` [algorithm identifier] is `BCRYPT_ECDSA_ALGORITHM` and the [named elliptic curve] depends on the value of `c`:\n" +
+							"\n" +
+							"- If `c.Params().Name == \"P-224\"` then curve is `BCRYPT_ECC_CURVE_NISTP224`.\n" +
+							"- If `c.Params().Name == \"P-256\"` then curve is `BCRYPT_ECC_CURVE_NISTP256`.\n" +
+							"- If `c.Params().Name == \"P-384\"` then curve is `BCRYPT_ECC_CURVE_NISTP384`.\n" +
+							"- If `c.Params().Name == \"P-521\"` then curve is `BCRYPT_ECC_CURVE_NISTP521`."),
 					},
 				},
 			},
@@ -595,14 +546,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The message is signed using [EVP_PKEY_sign].",
-						},
-						{
-							Name: "CNG",
-							Body: "The message is signed using [BCryptSignHash].",
-						},
+						openssl("The message is signed using [EVP_PKEY_sign]."),
+						cng("The message is signed using [BCryptSignHash]."),
 					},
 				},
 			},
@@ -629,10 +574,7 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`pub` and `priv` are generated using [EVP_PKEY_keygen] with the `EVP_PKEY_ED25519` algorithm.",
-						},
+						openssl("`pub` and `priv` are generated using [EVP_PKEY_keygen] with the `EVP_PKEY_ED25519` algorithm."),
 					},
 				},
 			},
@@ -643,10 +585,7 @@ var userGuideContent = []ugPackage{
 				Doc:       "Sign signs the message with privateKey and returns a signature. It will panic if len(privateKey) is not PrivateKeySize.",
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`message` is signed using [EVP_MD_CTX_new], [EVP_DigestSignInit] and [EVP_DigestSign].",
-						},
+						openssl("`message` is signed using [EVP_MD_CTX_new], [EVP_DigestSignInit] and [EVP_DigestSign]."),
 					},
 				},
 			},
@@ -662,11 +601,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`message` is verified against `sig` using [EVP_MD_CTX_new], [EVP_DigestVerifyInit] and [EVP_DigestVerify].\n" +
-								"",
-						},
+						openssl("`message` is verified against `sig` using [EVP_MD_CTX_new], [EVP_DigestVerifyInit] and [EVP_DigestVerify].\n" +
+							""),
 					},
 				},
 			},
@@ -682,11 +618,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`message` is verified against `sig` using [EVP_MD_CTX_new], [EVP_DigestVerifyInit] and [EVP_DigestVerify].\n" +
-								"",
-						},
+						openssl("`message` is verified against `sig` using [EVP_MD_CTX_new], [EVP_DigestVerifyInit] and [EVP_DigestVerify].\n" +
+							""),
 					},
 				},
 			},
@@ -697,11 +630,8 @@ var userGuideContent = []ugPackage{
 				Doc:       "NewKeyFromSeed calculates a private key from a seed. It will panic if len(seed) is not SeedSize.",
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`priv` is generated using [EVP_PKEY_new_raw_private_key] with the `EVP_PKEY_ED25519` algorithm.\n" +
-								"",
-						},
+						openssl("`priv` is generated using [EVP_PKEY_new_raw_private_key] with the `EVP_PKEY_ED25519` algorithm.\n" +
+							""),
 					},
 				},
 			},
@@ -717,10 +647,7 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`message` is signed using [EVP_MD_CTX_new], [EVP_DigestSignInit] and [EVP_DigestSign].",
-						},
+						openssl("`message` is signed using [EVP_MD_CTX_new], [EVP_DigestSignInit] and [EVP_DigestSign]."),
 					},
 				},
 			},
@@ -782,23 +709,20 @@ var userGuideContent = []ugPackage{
 								"- `Sum` using [EVP_MAC_final].\n" +
 								"- `Reset` using [EVP_MAC_init].",
 						},
-						{
-							Name: "CNG",
-							Body: "The hmac is generated using [BCryptCreateHash] with the `BCRYPT_ALG_HANDLE_HMAC_FLAG` flag.\n" +
-								"\n" +
-								"The [algorithm identifier] depends on the value of `h`:\n" +
-								"\n" +
-								"- If `h == sha1.New` then algorithm is `BCRYPT_SHA1_ALGORITHM`.\n" +
-								"- If `h == sha256.New` then algorithm is `BCRYPT_SHA256_ALGORITHM`.\n" +
-								"- If `h == sha384.New` then algorithm is `BCRYPT_SHA384_ALGORITHM`.\n" +
-								"- If `h == sha512.New` then algorithm is `BCRYPT_SHA512_ALGORITHM`.\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [BCryptHashData].\n" +
-								"- `Sum` using [BCryptFinishHash].\n" +
-								"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash].",
-						},
+						cng("The hmac is generated using [BCryptCreateHash] with the `BCRYPT_ALG_HANDLE_HMAC_FLAG` flag.\n" +
+							"\n" +
+							"The [algorithm identifier] depends on the value of `h`:\n" +
+							"\n" +
+							"- If `h == sha1.New` then algorithm is `BCRYPT_SHA1_ALGORITHM`.\n" +
+							"- If `h == sha256.New` then algorithm is `BCRYPT_SHA256_ALGORITHM`.\n" +
+							"- If `h == sha384.New` then algorithm is `BCRYPT_SHA384_ALGORITHM`.\n" +
+							"- If `h == sha512.New` then algorithm is `BCRYPT_SHA512_ALGORITHM`.\n" +
+							"\n" +
+							"The hash.Hash methods are implemented as follows:\n" +
+							"\n" +
+							"- `Write` using [BCryptHashData].\n" +
+							"- `Sum` using [BCryptFinishHash].\n" +
+							"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash]."),
 					},
 				},
 			},
@@ -815,37 +739,13 @@ var userGuideContent = []ugPackage{
 				Name:      "New",
 				Signature: "func md5.New() hash.Hash",
 				Doc:       "New returns a new hash.Hash computing the MD5 checksum.",
-				Impl: &ugImpl{
-					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [EVP_md5].\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [EVP_DigestUpdate].\n" +
-								"- `Sum` using [EVP_DigestFinal].\n" +
-								"- `Reset` using [EVP_DigestInit].",
-						},
-						{
-							Name: "CNG",
-							Body: "The hash is generated using [BCryptCreateHash] with the [algorithm identifier] `BCRYPT_MD5_ALGORITHM`.\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [BCryptHashData].\n" +
-								"- `Sum` using [BCryptFinishHash].\n" +
-								"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash].",
-						},
-					},
-				},
+				Impl:      hashImpl("EVP_md5", "BCRYPT_MD5_ALGORITHM"),
 			},
 			{
 				Kind:      "func",
 				Name:      "Sum",
 				Signature: "func md5.Sum(data []byte) [15]byte",
-				Doc: "Sum returns the MD5 checksum of the data.\n" +
-					"It internally uses md5.New() to compute the checksum.",
+				Doc:       sumDoc("Sum", "MD5", "md5.New()"),
 			},
 		},
 	},
@@ -863,14 +763,8 @@ var userGuideContent = []ugPackage{
 					"It is assigned to boring.RandReader in the crypto/rand init function.",
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`rand.Reader` implements `io.Reader` using [RAND_bytes]",
-						},
-						{
-							Name: "CNG",
-							Body: "`rand.Reader` implements `io.Reader` using [BCryptGenRandom]",
-						},
+						openssl("`rand.Reader` implements `io.Reader` using [RAND_bytes]"),
+						cng("`rand.Reader` implements `io.Reader` using [BCryptGenRandom]"),
 					},
 				},
 			},
@@ -924,24 +818,18 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The cipher is generated using [EVP_CIPHER_CTX_new] and [EVP_CipherInit_ex] with the cipher type [EVP_rc4].\n" +
-								"\n" +
-								"The rc4.Cipher methods are implemented as follows:\n" +
-								"\n" +
-								"- `Reset` using [EVP_CIPHER_CTX_free].\n" +
-								"- `XORKeyStream` using [EVP_EncryptUpdate].",
-						},
-						{
-							Name: "CNG",
-							Body: "The cipher is generated using [BCryptGenerateSymmetricKey] using the `BCRYPT_RC4_ALGORITHM` mode.\n" +
-								"\n" +
-								"The rc4.Cipher methods are implemented as follows:\n" +
-								"\n" +
-								"- `Reset` using [BCryptDestroyKey].\n" +
-								"- `XORKeyStream` using [BCryptEncrypt].",
-						},
+						openssl("The cipher is generated using [EVP_CIPHER_CTX_new] and [EVP_CipherInit_ex] with the cipher type [EVP_rc4].\n" +
+							"\n" +
+							"The rc4.Cipher methods are implemented as follows:\n" +
+							"\n" +
+							"- `Reset` using [EVP_CIPHER_CTX_free].\n" +
+							"- `XORKeyStream` using [EVP_EncryptUpdate]."),
+						cng("The cipher is generated using [BCryptGenerateSymmetricKey] using the `BCRYPT_RC4_ALGORITHM` mode.\n" +
+							"\n" +
+							"The rc4.Cipher methods are implemented as follows:\n" +
+							"\n" +
+							"- `Reset` using [BCryptDestroyKey].\n" +
+							"- `XORKeyStream` using [BCryptEncrypt]."),
 					},
 				},
 			},
@@ -958,37 +846,13 @@ var userGuideContent = []ugPackage{
 				Name:      "New",
 				Signature: "func sha1.New() hash.Hash",
 				Doc:       "New returns a new hash.Hash computing the SHA1 checksum.",
-				Impl: &ugImpl{
-					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [EVP_sha1].\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [EVP_DigestUpdate].\n" +
-								"- `Sum` using [EVP_DigestFinal].\n" +
-								"- `Reset` using [EVP_DigestInit].",
-						},
-						{
-							Name: "CNG",
-							Body: "The hash is generated using [BCryptCreateHash] with the [algorithm identifier] `BCRYPT_SHA1_ALGORITHM`.\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [BCryptHashData].\n" +
-								"- `Sum` using [BCryptFinishHash].\n" +
-								"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash].",
-						},
-					},
-				},
+				Impl:      hashImpl("EVP_sha1", "BCRYPT_SHA1_ALGORITHM"),
 			},
 			{
 				Kind:      "func",
 				Name:      "Sum",
 				Signature: "func sha1.Sum(data []byte) [20]byte",
-				Doc: "Sum returns the SHA-1 checksum of the data.\n" +
-					"It internally uses sha1.New() to compute the checksum.",
+				Doc:       sumDoc("Sum", "SHA-1", "sha1.New()"),
 			},
 		},
 	},
@@ -1001,30 +865,7 @@ var userGuideContent = []ugPackage{
 				Name:      "New",
 				Signature: "func sha256.New() hash.Hash",
 				Doc:       "New returns a new hash.Hash computing the SHA256 checksum.",
-				Impl: &ugImpl{
-					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [EVP_sha256].\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [EVP_DigestUpdate].\n" +
-								"- `Sum` using [EVP_DigestFinal].\n" +
-								"- `Reset` using [EVP_DigestInit].",
-						},
-						{
-							Name: "CNG",
-							Body: "The hash is generated using [BCryptCreateHash] with the [algorithm identifier] `BCRYPT_SHA256_ALGORITHM`.\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [BCryptHashData].\n" +
-								"- `Sum` using [BCryptFinishHash].\n" +
-								"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash].",
-						},
-					},
-				},
+				Impl:      hashImpl("EVP_sha256", "BCRYPT_SHA256_ALGORITHM"),
 			},
 			{
 				Kind:      "func",
@@ -1036,27 +877,13 @@ var userGuideContent = []ugPackage{
 						"The CNG backend does not implement this function.",
 					},
 				},
-				Impl: &ugImpl{
-					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [EVP_sha24].\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [EVP_DigestUpdate].\n" +
-								"- `Sum` using [EVP_DigestFinal].\n" +
-								"- `Reset` using [EVP_DigestInit].",
-						},
-					},
-				},
+				Impl: hashImpl("EVP_sha224", ""),
 			},
 			{
 				Kind:      "func",
 				Name:      "Sum224",
 				Signature: "func sha256.Sum224(data []byte) [24]byte",
-				Doc: "Sum224 returns the SHA224 checksum of the data.\n" +
-					"It internally uses sha224.New() to compute the checksum.",
+				Doc:       sumDoc("Sum224", "SHA224", "sha224.New()"),
 				Requirements: &ugRequirements{
 					Items: []string{
 						"The CNG backend does not implement this function.",
@@ -1067,8 +894,7 @@ var userGuideContent = []ugPackage{
 				Kind:      "func",
 				Name:      "Sum256",
 				Signature: "func sha256.Sum256(data []byte) [32]byte",
-				Doc: "Sum256 returns the SHA256 checksum of the data.\n" +
-					"It internally uses sha256.New() to compute the checksum.",
+				Doc:       sumDoc("Sum256", "SHA256", "sha256.New()"),
 			},
 		},
 	},
@@ -1081,95 +907,31 @@ var userGuideContent = []ugPackage{
 				Name:      "New",
 				Signature: "func sha512.New() hash.Hash",
 				Doc:       "New returns a new hash.Hash computing the SHA-512 checksum.",
-				Impl: &ugImpl{
-					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [EVP_sha512].\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [EVP_DigestUpdate].\n" +
-								"- `Sum` using [EVP_DigestFinal].\n" +
-								"- `Reset` using [EVP_DigestInit].",
-						},
-						{
-							Name: "CNG",
-							Body: "The hash is generated using [BCryptCreateHash] with the [algorithm identifier] `BCRYPT_SHA512_ALGORITHM`.\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [BCryptHashData].\n" +
-								"- `Sum` using [BCryptFinishHash].\n" +
-								"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash].",
-						},
-					},
-				},
+				Impl:      hashImpl("EVP_sha512", "BCRYPT_SHA512_ALGORITHM"),
 			},
 			{
 				Kind:      "func",
 				Name:      "New384",
 				Signature: "func sha512.New384() hash.Hash",
 				Doc:       "New384 returns a new hash.Hash computing the SHA-384 checksum.",
-				Impl: &ugImpl{
-					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "The hash is generated using [EVP_MD_CTX_new] and [EVP_DigestInit_ex] with the algorithm [EVP_sha384].\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [EVP_DigestUpdate].\n" +
-								"- `Sum` using [EVP_DigestFinal].\n" +
-								"- `Reset` using [EVP_DigestInit].",
-						},
-						{
-							Name: "CNG",
-							Body: "The hash is generated using [BCryptCreateHash] with the [algorithm identifier] `BCRYPT_SHA384_ALGORITHM`.\n" +
-								"\n" +
-								"The hash.Hash methods are implemented as follows:\n" +
-								"\n" +
-								"- `Write` using [BCryptHashData].\n" +
-								"- `Sum` using [BCryptFinishHash].\n" +
-								"- `Reset` using [BCryptDestroyHash] and [BCryptCreateHash].",
-						},
-					},
-				},
+				Impl:      hashImpl("EVP_sha384", "BCRYPT_SHA384_ALGORITHM"),
 			},
-			{
-				Kind: "func",
-				Name: "New512_224",
-				Doc:  "sha512.New512_224 is not implemented by any backend.",
-			},
-			{
-				Kind: "func",
-				Name: "New512_256",
-				Doc:  "sha512.New512_256 is not implemented by any backend.",
-			},
+			notImplementedFunc("sha512.New512_224"),
+			notImplementedFunc("sha512.New512_256"),
 			{
 				Kind:      "func",
 				Name:      "Sum384",
 				Signature: "func sha512.Sum384(data []byte) [48]byte",
-				Doc: "Sum384 returns the SHA384 checksum of the data.\n" +
-					"It internally uses sha512.New384() to compute the checksum.",
+				Doc:       sumDoc("Sum384", "SHA384", "sha512.New384()"),
 			},
 			{
 				Kind:      "func",
 				Name:      "Sum512",
 				Signature: "func sha512.Sum512(data []byte) [64]byte",
-				Doc: "Sum512 returns the SHA512 checksum of the data.\n" +
-					"It internally uses sha512.New() to compute the checksum.",
+				Doc:       sumDoc("Sum512", "SHA512", "sha512.New()"),
 			},
-			{
-				Kind: "func",
-				Name: "Sum512_224",
-				Doc:  "sha512.Sum512_224 is not implemented by any backend.",
-			},
-			{
-				Kind: "func",
-				Name: "Sum512_256",
-				Doc:  "sha512.Sum512_256 is not implemented by any backend.",
-			},
+			notImplementedFunc("sha512.Sum512_224"),
+			notImplementedFunc("sha512.Sum512_256"),
 		},
 	},
 	{
@@ -1190,14 +952,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`ciphertext` is decrypted using [EVP_PKEY_decrypt] with `RSA_PKCS1_OAEP_PADDING` pad mode.",
-						},
-						{
-							Name: "CNG",
-							Body: "`ciphertext` is decrypted using [BCryptDecrypt] with [BCRYPT_OAEP_PADDING_INFO] padding information and `BCRYPT_PAD_OAEP` pad mode.",
-						},
+						openssl("`ciphertext` is decrypted using [EVP_PKEY_decrypt] with `RSA_PKCS1_OAEP_PADDING` pad mode."),
+						cng("`ciphertext` is decrypted using [BCryptDecrypt] with [BCRYPT_OAEP_PADDING_INFO] padding information and `BCRYPT_PAD_OAEP` pad mode."),
 					},
 				},
 			},
@@ -1214,14 +970,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`ciphertext` is decrypted using [EVP_PKEY_decrypt] with `RSA_PKCS1_PADDING` pad mode.",
-						},
-						{
-							Name: "CNG",
-							Body: "`ciphertext` is decrypted using [BCryptDecrypt] with `BCRYPT_PAD_PKCS1` pad mode.",
-						},
+						openssl("`ciphertext` is decrypted using [EVP_PKEY_decrypt] with `RSA_PKCS1_PADDING` pad mode."),
+						cng("`ciphertext` is decrypted using [BCryptDecrypt] with `BCRYPT_PAD_PKCS1` pad mode."),
 					},
 				},
 			},
@@ -1238,14 +988,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`ciphertext` is decrypted using [EVP_PKEY_decrypt] with `RSA_PKCS1_PADDING` pad mode and copied into `key`.",
-						},
-						{
-							Name: "CNG",
-							Body: "`ciphertext` is decrypted using [BCryptDecrypt] with `BCRYPT_PAD_PKCS1` pad mode and copied into `key`.",
-						},
+						openssl("`ciphertext` is decrypted using [EVP_PKEY_decrypt] with `RSA_PKCS1_PADDING` pad mode and copied into `key`."),
+						cng("`ciphertext` is decrypted using [BCryptDecrypt] with `BCRYPT_PAD_PKCS1` pad mode and copied into `key`."),
 					},
 				},
 			},
@@ -1260,14 +1004,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`msg` is encrypted using [EVP_PKEY_encrypt] with `RSA_PKCS1_PADDING` pad mode.",
-						},
-						{
-							Name: "CNG",
-							Body: "`msg` is encrypted using [BCryptEncrypt] with `BCRYPT_PAD_PKCS1` pad mode.",
-						},
+						openssl("`msg` is encrypted using [EVP_PKEY_encrypt] with `RSA_PKCS1_PADDING` pad mode."),
+						cng("`msg` is encrypted using [BCryptEncrypt] with `BCRYPT_PAD_PKCS1` pad mode."),
 					},
 				},
 			},
@@ -1280,21 +1018,15 @@ var userGuideContent = []ugPackage{
 					Items: []string{
 						"`rand` is not used. Blinding, if implemented, is delegated to crypto backend.",
 						"`priv.Primes` length must be 2 when using the CNG backend.",
-						"`hash` must be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, rypto.SHA384, or crypto.SHA512. Else SignPKCS1v15 will fail.",
+						"`hash` must be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, crypto.SHA384, or crypto.SHA512. Else SignPKCS1v15 will fail.",
 						"The CNG backend does not support crypto.MD5SHA1 nor crypto.SHA224.",
 						"`hashed` must be the result of hashing a message using a FIPS compliant hashing algorithm.",
 					},
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`hashed` is signed using [EVP_PKEY_sign] with `RSA_PKCS1_PADDING`.",
-						},
-						{
-							Name: "CNG",
-							Body: "`hashed` is signed using [BCryptSignHash] with [BCRYPT_PKCS1_PADDING_INFO] padding information and `BCRYPT_PAD_PKCS1` pad mode.",
-						},
+						openssl("`hashed` is signed using [EVP_PKEY_sign] with `RSA_PKCS1_PADDING`."),
+						cng("`hashed` is signed using [BCryptSignHash] with [BCRYPT_PKCS1_PADDING_INFO] padding information and `BCRYPT_PAD_PKCS1` pad mode."),
 					},
 				},
 			},
@@ -1307,7 +1039,7 @@ var userGuideContent = []ugPackage{
 					Items: []string{
 						"`rand` must be boring.RandReader, else SignPSS will panic. `crypto/rand.Reader` normally meets this invariant, as it is assigned to boring.RandReader in the crypto/rand init function.",
 						"`priv.Primes` length must be 2 when using the CNG backend.",
-						"`hash` can be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, rypto.SHA384, or crypto.SHA512. Else SignPSS will fail.",
+						"`hash` can be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, crypto.SHA384, or crypto.SHA512. Else SignPSS will fail.",
 						"The CNG backend does not support crypto.MD5SHA1 nor crypto.SHA224.",
 						"`digest` must be the result of hashing a message using a FIPS compliant hashing algorithm.",
 						"`opts` can be nil.",
@@ -1316,14 +1048,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`digest` is signed using [EVP_PKEY_sign] with `RSA_PKCS1_PSS_PADDING` pad mode.",
-						},
-						{
-							Name: "CNG",
-							Body: "`digest` is signed using [BCryptSignHash] with [BCRYPT_PSS_PADDING_INFO] padding information and `BCRYPT_PAD_PSS` pad mode.",
-						},
+						openssl("`digest` is signed using [EVP_PKEY_sign] with `RSA_PKCS1_PSS_PADDING` pad mode."),
+						cng("`digest` is signed using [BCryptSignHash] with [BCRYPT_PSS_PADDING_INFO] padding information and `BCRYPT_PAD_PSS` pad mode."),
 					},
 				},
 			},
@@ -1334,21 +1060,15 @@ var userGuideContent = []ugPackage{
 				Doc:       "VerifyPKCS1v15 verifies an RSA PKCS #1 v1.5 signature.",
 				Requirements: &ugRequirements{
 					Items: []string{
-						"`hash` can be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, rypto.SHA384, or crypto.SHA512. Else SignPSS will fail.",
+						"`hash` can be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, crypto.SHA384, or crypto.SHA512. Else SignPSS will fail.",
 						"The CNG backend does not support crypto.MD5SHA1 nor crypto.SHA224.",
 						"`hashed` must be the result of hashing a message using a FIPS compliant hashing algorithm.",
 					},
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`sig` is verified using [EVP_PKEY_verify] with `RSA_PKCS1_PADDING` pad mode.",
-						},
-						{
-							Name: "CNG",
-							Body: "`sig` is verified using [BCryptVerifySignature] with [BCRYPT_PKCS1_PADDING_INFO] padding information and `BCRYPT_PAD_PKCS1` pad mode.",
-						},
+						openssl("`sig` is verified using [EVP_PKEY_verify] with `RSA_PKCS1_PADDING` pad mode."),
+						cng("`sig` is verified using [BCryptVerifySignature] with [BCRYPT_PKCS1_PADDING_INFO] padding information and `BCRYPT_PAD_PKCS1` pad mode."),
 					},
 				},
 			},
@@ -1359,7 +1079,7 @@ var userGuideContent = []ugPackage{
 				Doc:       "VerifyPSS verifies a PSS signature.",
 				Requirements: &ugRequirements{
 					Items: []string{
-						"`hash` can be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, rypto.SHA384, or crypto.SHA512. Else VerifyPSS will fail.",
+						"`hash` can be one of the following values: crypto.MD5, crypto.MD5SHA1, crypto.SHA1, crypto.SHA224, crypto.SHA256, crypto.SHA384, or crypto.SHA512. Else VerifyPSS will fail.",
 						"The CNG backend does not support crypto.MD5SHA1 nor crypto.SHA224.",
 						"`digest` must be the result of hashing a message using a FIPS compliant hashing algorithm.",
 						"`opts` can be nil.",
@@ -1369,14 +1089,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`sig` is verified using using [EVP_PKEY_verify] with `RSA_PKCS1_PSS_PADDING` pad mode.",
-						},
-						{
-							Name: "CNG",
-							Body: "`sig` is verified using [BCryptVerifySignature] with [PSS_PADDING_INFO] padding information and `BCRYPT_PAD_PSS` pad mode.",
-						},
+						openssl("`sig` is verified using [EVP_PKEY_verify] with `RSA_PKCS1_PSS_PADDING` pad mode."),
+						cng("`sig` is verified using [BCryptVerifySignature] with [BCRYPT_PSS_PADDING_INFO] padding information and `BCRYPT_PAD_PSS` pad mode."),
 					},
 				},
 			},
@@ -1393,14 +1107,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`priv` is a wrapper around [EVP_PKEY] generated using [EVP_PKEY_keygen].",
-						},
-						{
-							Name: "CNG",
-							Body: "`priv` is generated using [BCryptGenerateKeyPair] with the [algorithm identifier] `BCRYPT_RSA_ALGORITHM`.",
-						},
+						openssl("`priv` is a wrapper around [EVP_PKEY] generated using [EVP_PKEY_keygen]."),
+						cng("`priv` is generated using [BCryptGenerateKeyPair] with the [algorithm identifier] `BCRYPT_RSA_ALGORITHM`."),
 					},
 				},
 			},
@@ -1418,14 +1126,8 @@ var userGuideContent = []ugPackage{
 				},
 				Impl: &ugImpl{
 					Backends: []ugBackend{
-						{
-							Name: "OpenSSL",
-							Body: "`priv` is a wrapper around [EVP_PKEY] generated using [EVP_PKEY_keygen].",
-						},
-						{
-							Name: "CNG",
-							Body: "`priv` is generated using [BCryptGenerateKeyPair] with the [algorithm identifier] `BCRYPT_RSA_ALGORITHM`.",
-						},
+						openssl("`priv` is a wrapper around [EVP_PKEY] generated using [EVP_PKEY_keygen]."),
+						cng("`priv` is generated using [BCryptGenerateKeyPair] with the [algorithm identifier] `BCRYPT_RSA_ALGORITHM`."),
 					},
 				},
 			},

@@ -32,6 +32,11 @@ type ugBackend struct {
 	Body string
 }
 
+// openssl and cng construct ugBackend entries for the two backends that appear
+// throughout the content, so the data avoids repeating the backend names.
+func openssl(body string) ugBackend { return ugBackend{Name: "OpenSSL", Body: body} }
+func cng(body string) ugBackend     { return ugBackend{Name: "CNG", Body: body} }
+
 // ugImpl describes the "Implementation" section of a package or API entry. Text
 // is optional prose rendered before the per-backend details; Backends is the
 // optional list of per-backend implementations.
